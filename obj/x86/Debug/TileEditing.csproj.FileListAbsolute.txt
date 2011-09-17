@@ -1,0 +1,8 @@
+C:\Users\Michael\Downloads\TShock Current\ServerPlugins\TileEditing.dll
+C:\Users\Michael\Downloads\TShock Current\ServerPlugins\TileEditing.pdb
+C:\Users\Michael\Downloads\Paste\TShockPluginTemplate\obj\x86\Debug\ResolveAssemblyReference.cache
+C:\Users\Michael\Downloads\Paste\TShockPluginTemplate\obj\x86\Debug\TileEditing.dll
+C:\Users\Michael\Downloads\Paste\TShockPluginTemplate\obj\x86\Debug\TileEditing.pdb
+C:\Users\Michael\Downloads\TShock Test\ServerPlugins\TileEditing.dll
+C:\Users\Michael\Downloads\TShock Test\ServerPlugins\TileEditing.pdb
+C:\Users\Michael\Downloads\TShock Test\ServerPlugins\TShockAPI.XML
