@@ -147,15 +147,15 @@ namespace PluginTemplate
             Commands.ChatCommands.Add(new Command("tilepasting", ClearArea, "cleararea"));
             Commands.ChatCommands.Add(new Command("tilepasting", Rectangle, "rectangle"));
             Commands.ChatCommands.Add(new Command("tilepasting", RectangleOutline, "rectangleoutline"));
-            Commands.ChatCommands.Add(new Command("tilepasting", Circle, "oval"));
-            Commands.ChatCommands.Add(new Command("tilepasting", CircleOutline, "ovaloutline"));
-            Commands.ChatCommands.Add(new Command("tilepasting", SemiCircle, "semioval"));
-            //Commands.ChatCommands.Add(new Command("tilepasting", Rectangle, "semiovaloutline"));
+            Commands.ChatCommands.Add(new Command("tilepasting", Oval, "oval"));
+            Commands.ChatCommands.Add(new Command("tilepasting", OvalOutline, "ovaloutline"));
+            Commands.ChatCommands.Add(new Command("tilepasting", SemiOval, "semioval"));
+            Commands.ChatCommands.Add(new Command("tilepasting", SemiOvalOutline, "semiovaloutline"));
             Commands.ChatCommands.Add(new Command("tilepasting", Copy, "copy"));
             Commands.ChatCommands.Add(new Command("tilepasting", Paste, "paste"));
         }
 
-        public static void Circle(CommandArgs args)
+        public static void Oval(CommandArgs args)
         {
 
             if (args.Parameters.Count > 0)
@@ -246,7 +246,7 @@ namespace PluginTemplate
 
         }
 
-        public static void SemiCircle(CommandArgs args)
+        public static void SemiOval(CommandArgs args)
         {
 
             if (args.Parameters.Count > 1)
@@ -385,7 +385,146 @@ namespace PluginTemplate
 
         }
 
-        public static void CircleOutline(CommandArgs args)
+        public static void SemiOvalOutline(CommandArgs args)
+        {
+
+            if (args.Parameters.Count > 1)
+            {
+                if (!args.Player.TempPoints.Any(p => p == PointF.Empty))
+                {
+
+                    string theString = "";
+                    for (int i = 1; i < args.Parameters.Count; i++)
+                    {
+
+                        if (i + 1 != args.Parameters.Count)
+                        {
+                            theString += args.Parameters[i] + " ";
+                        }
+                        else
+                        {
+                            theString += args.Parameters[i];
+                        }
+
+                    }
+                    bool isWall = false;
+                    byte tileType = findTileType(theString);
+                    byte wallType = findWallType(theString);
+                    isWall = ((tileType == 255) && (wallType != 255));
+                    if ((tileType != 255) || (wallType != 255))
+                    {
+                        int x = Math.Min(args.Player.TempPoints[0].X, args.Player.TempPoints[1].X);
+                        int y = Math.Min(args.Player.TempPoints[0].Y, args.Player.TempPoints[1].Y);
+                        int width = Math.Abs(args.Player.TempPoints[0].X - args.Player.TempPoints[1].X);
+                        int height = Math.Abs(args.Player.TempPoints[0].Y - args.Player.TempPoints[1].Y);
+                        for (int y2 = 0; y2 <= height; y2++)
+                        {
+
+                            for (int x2 = 0; x2 <= width; x2++)
+                            {
+
+                                switch (args.Parameters[0].ToLower())
+                                {
+
+                                    case "left": if ((Math.Pow((x2 - width / 1.0) / (width / 1.0), 2) + Math.Pow((y2 - height / 2.0) / (height / 2.0), 2) <= 1.0) && (Math.Pow((x2 - width / 1.0) / (width / 1.0), 2) + Math.Pow((y2 - height / 2.0) / (height / 2.0), 2) >= Convert.ToDouble(width * 2 >= height) * ((width * 2.0 - 7.5) / (width * 2.0)) + Convert.ToDouble(width * 2 < height) * ((height - 7.5) / height)))
+                                        {
+
+                                            if (!isWall)
+                                            {
+                                                changeTile(x + x2, y + y2, tileType, 255);
+                                            }
+                                            else
+                                            {
+                                                changeTile(x + x2, y + y2, 255, wallType);
+                                            }
+
+                                        }
+                                        break;
+                                    case "right": if ((Math.Pow((x2) / (width / 1.0), 2) + Math.Pow((y2 - height / 2.0) / (height / 2.0), 2) <= 1.0) && (Math.Pow((x2) / (width / 1.0), 2) + Math.Pow((y2 - height / 2.0) / (height / 2.0), 2) >= Convert.ToDouble(width * 2 >= height) * ((width * 2.0 - 7.5) / (width * 2.0)) + Convert.ToDouble(width * 2 < height) * ((height - 7.5) / height)))
+                                        {
+
+                                            if (!isWall)
+                                            {
+                                                changeTile(x + x2, y + y2, tileType, 255);
+                                            }
+                                            else
+                                            {
+                                                changeTile(x + x2, y + y2, 255, wallType);
+                                            }
+
+                                        }
+                                        break;
+                                    case "bottom": if ((Math.Pow((x2 - width / 2.0) / (width / 2.0), 2) + Math.Pow((y2) / (height / 1.0), 2) <= 1.0) && (Math.Pow((x2 - width / 2.0) / (width / 2.0), 2) + Math.Pow((y2) / (height / 1.0), 2) >= Convert.ToDouble(width >= height * 2) * ((width - 7.5) / width) + Convert.ToDouble(width < height * 2) * ((height * 2.0 - 7.5) / (height * 2.0))))
+                                        {
+
+                                            if (!isWall)
+                                            {
+                                                changeTile(x + x2, y + y2, tileType, 255);
+                                            }
+                                            else
+                                            {
+                                                changeTile(x + x2, y + y2, 255, wallType);
+                                            }
+
+                                        }
+                                        break;
+                                    case "top": if ((Math.Pow((x2 - width / 2.0) / (width / 2.0), 2) + Math.Pow((y2 - height / 1.0) / (height / 1.0), 2) <= 1.0) && (Math.Pow((x2 - width / 2.0) / (width / 2.0), 2) + Math.Pow((y2 - height / 1.0) / (height / 1.0), 2) >= Convert.ToDouble(width >= height * 2) * ((width - 7.5) / width) + Convert.ToDouble(width < height * 2) * ((height * 2.0 - 7.5) / (height * 2.0))))
+                                        {
+
+                                            if (!isWall)
+                                            {
+                                                changeTile(x + x2, y + y2, tileType, 255);
+                                            }
+                                            else
+                                            {
+                                                changeTile(x + x2, y + y2, 255, wallType);
+                                            }
+
+                                        }
+                                        break;
+
+                                }
+
+                            }
+
+                        }
+                        for (int y2 = 0; y2 <= height; y2++)
+                        {
+
+                            for (int x2 = 0; x2 <= width; x2++)
+                            {
+
+                                TSPlayer.All.SendTileSquare(x + x2, y + y2, 3);
+
+                            }
+
+                        }
+                        args.Player.TempPoints[0] = System.Drawing.Point.Empty;
+                        args.Player.TempPoints[1] = System.Drawing.Point.Empty;
+                        args.Player.SendMessage("Tiles changed!");
+                    }
+                    else
+                    {
+
+                        args.Player.SendMessage("That is not a recognized tile type.", System.Drawing.Color.Red);
+
+                    }
+                }
+                else
+                {
+                    args.Player.SendMessage("Points not set up yet", System.Drawing.Color.Red);
+                }
+            }
+            else
+            {
+
+                args.Player.SendMessage("Improper syntax! Proper syntax: /semiovaloutline top|left|bottom|right blocktype", System.Drawing.Color.Red);
+
+            }
+
+        }
+
+        public static void OvalOutline(CommandArgs args)
         {
 
             if (args.Parameters.Count > 0)
