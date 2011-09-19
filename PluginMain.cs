@@ -508,7 +508,11 @@ namespace PluginTemplate
                             try
                             {
                                 Main.tile[x + x2, y + y2].active = Main.tile[X,Y].active;
-                                try { Main.tile[x + x2, y + y2].type = Main.tile[X, Y].type; }
+                                try
+                                {
+                                    if (findTileByID(Main.tile[X, Y].type) != 255)
+                                    Main.tile[x + x2, y + y2].type = Main.tile[X, Y].type;
+                                }
                                 catch (NullReferenceException) { Main.tile[x + x2, y + y2].active = false; }
                                 try { Main.tile[x + x2, y + y2].wall = Main.tile[X, Y].wall; }
                                 catch (NullReferenceException) { Main.tile[x + x2, y + y2].wall = 0; }
@@ -535,14 +539,66 @@ namespace PluginTemplate
                         for (int x2 = 0; x2 <= width; x2++)
                         {
 
+                            X = copyX[i] + x2;
+                            Y = copyY[i] + y2;
                             try
                             {
-                                TSPlayer.All.SendTileSquare(x + x2, y + y2, 3);
+                                if (findTileByID(Main.tile[X, Y].type) == 255)
+                                    Main.tile[x + x2, y + y2].type = Main.tile[X, Y].type;
+                            }
+                            catch (Exception) { Main.tile[x + x2, y + y2].active = false; }
+
+                        }
+
+                    }
+                    for (int y2 = 0; y2 <= height; y2++)
+                    {
+
+                        for (int x2 = 0; x2 <= width; x2++)
+                        {
+
+                            X = copyX[i] + x2;
+                            Y = copyY[i] + y2;
+                            try
+                            {
+                                if (findTileByID(Main.tile[X, Y].type) != 255)
+                                    try
+                                    {
+                                        TSPlayer.All.SendTileSquare(x + x2, y + y2, 3);
+                                    }
+                                    catch (Exception) { }
+                            }
+                            catch (Exception)
+                            {
+                                try
+                                {
+                                    TSPlayer.All.SendTileSquare(x + x2, y + y2, 3);
+                                }
+                                catch (Exception) { }
+                            }
+
+                        }
+
+                    }
+                    for (int y2 = 0; y2 <= height; y2++)
+                    {
+
+                        for (int x2 = 0; x2 <= width; x2++)
+                        {
+
+                            X = copyX[i] + x2;
+                            Y = copyY[i] + y2;
+                            try
+                            {
+                                if (findTileByID(Main.tile[X, Y].type) == 255)
+                                {
+                                    TSPlayer.All.SendTileSquare(x + x2, y + y2, 3);
+                                }
                             }
                             catch (Exception) { }
 
                         }
-
+                    
                     }
                     args.Player.TempPoints[0] = System.Drawing.Point.Empty;
                     args.Player.TempPoints[1] = System.Drawing.Point.Empty;
@@ -902,6 +958,23 @@ namespace PluginTemplate
                 return (255);
 
             }
+
+        }
+        public static byte findTileByID(int tileID)
+        {
+
+            foreach (KeyValuePair<string, byte> entry in tileTypeNames)
+            {
+
+                if (tileID == entry.Value)
+                {
+
+                    return (entry.Value);
+
+                }
+
+            }
+            return (255);
 
         }
 
