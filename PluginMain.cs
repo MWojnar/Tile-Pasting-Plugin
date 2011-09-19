@@ -151,6 +151,10 @@ namespace PluginTemplate
             Commands.ChatCommands.Add(new Command("tilepasting", OvalOutline, "ovaloutline"));
             Commands.ChatCommands.Add(new Command("tilepasting", SemiOval, "semioval"));
             Commands.ChatCommands.Add(new Command("tilepasting", SemiOvalOutline, "semiovaloutline"));
+            Commands.ChatCommands.Add(new Command("tilepasting", Circle, "circle"));
+            Commands.ChatCommands.Add(new Command("tilepasting", CircleOutline, "circleoutline"));
+            Commands.ChatCommands.Add(new Command("tilepasting", SemiCircle, "semicircle"));
+            Commands.ChatCommands.Add(new Command("tilepasting", SemiCircleOutline, "semicircleoutline"));
             Commands.ChatCommands.Add(new Command("tilepasting", Copy, "copy"));
             Commands.ChatCommands.Add(new Command("tilepasting", Paste, "paste"));
         }
@@ -343,6 +347,7 @@ namespace PluginTemplate
 
                                         }
                                         break;
+                                    default: args.Player.SendMessage("Improper syntax! Proper syntax: /semioval top|left|bottom|right blocktype", System.Drawing.Color.Red); return;
 
                                 }
 
@@ -482,6 +487,7 @@ namespace PluginTemplate
 
                                         }
                                         break;
+                                    default: args.Player.SendMessage("Improper syntax! Proper syntax: /semiovaloutline top|left|bottom|right blocktype", System.Drawing.Color.Red); return;
 
                                 }
 
@@ -992,6 +998,520 @@ namespace PluginTemplate
                 args.Player.SendMessage("Improper syntax! Proper syntax: /rectangleoutline blocktype", System.Drawing.Color.Red);
 
             }
+        }
+
+        public static void Circle(CommandArgs args)
+        {
+
+            if (args.Parameters.Count > 1)
+            {
+                if (args.Player.TempPoints[0] != PointF.Empty)
+                {
+                    int radius;
+                    try { radius = Convert.ToInt32(args.Parameters[0]); }
+                    catch (Exception) { args.Player.SendMessage("The radius needs to be an integer.", System.Drawing.Color.Red); return; }
+                    string theString = "";
+                    for (int i = 1; i < args.Parameters.Count; i++)
+                    {
+
+                        if (i + 1 != args.Parameters.Count)
+                        {
+                            theString += args.Parameters[i] + " ";
+                        }
+                        else
+                        {
+                            theString += args.Parameters[i];
+                        }
+
+                    }
+                    bool isWall = false;
+                    byte tileType = findTileType(theString);
+                    byte wallType = findWallType(theString);
+                    isWall = ((tileType == 255) && (wallType != 255));
+                    if ((tileType != 255) || (wallType != 255))
+                    {
+                        int x = args.Player.TempPoints[0].X;
+                        int y = args.Player.TempPoints[0].Y;
+                        for (int y2 = -radius; y2 <= radius; y2++)
+                        {
+
+                            for (int x2 = -radius; x2 <= radius; x2++)
+                            {
+
+                                if (Math.Sqrt(Math.Pow(x2, 2) + Math.Pow(y2, 2)) <= radius)
+                                {
+
+                                    if (!isWall)
+                                    {
+                                        changeTile(x + x2, y + y2, tileType, 255);
+                                    }
+                                    else
+                                    {
+                                        changeTile(x + x2, y + y2, 255, wallType);
+                                    }
+
+                                }
+
+                            }
+
+                        }
+                        for (int y2 = -radius; y2 <= radius; y2++)
+                        {
+
+                            for (int x2 = -radius; x2 <= radius; x2++)
+                            {
+
+                                TSPlayer.All.SendTileSquare(x + x2, y + y2, 3);
+
+                            }
+
+                        }
+                        args.Player.TempPoints[0] = System.Drawing.Point.Empty;
+                        args.Player.TempPoints[1] = System.Drawing.Point.Empty;
+                        args.Player.SendMessage("Tiles changed!");
+                    }
+                    else
+                    {
+
+                        args.Player.SendMessage("That is not a recognized tile type.", System.Drawing.Color.Red);
+
+                    }
+                }
+                else
+                {
+                    args.Player.SendMessage("Point 1 not set up yet", System.Drawing.Color.Red);
+                }
+            }
+            else
+            {
+
+                args.Player.SendMessage("Improper syntax! Proper syntax: /circle radius blocktype", System.Drawing.Color.Red);
+
+            }
+
+        }
+
+        public static void CircleOutline(CommandArgs args)
+        {
+
+            if (args.Parameters.Count > 1)
+            {
+                if (args.Player.TempPoints[0] != PointF.Empty)
+                {
+                    int radius;
+                    try { radius = Convert.ToInt32(args.Parameters[0]); }
+                    catch (Exception) { args.Player.SendMessage("The radius needs to be an integer.", System.Drawing.Color.Red); return; }
+                    string theString = "";
+                    for (int i = 1; i < args.Parameters.Count; i++)
+                    {
+
+                        if (i + 1 != args.Parameters.Count)
+                        {
+                            theString += args.Parameters[i] + " ";
+                        }
+                        else
+                        {
+                            theString += args.Parameters[i];
+                        }
+
+                    }
+                    bool isWall = false;
+                    byte tileType = findTileType(theString);
+                    byte wallType = findWallType(theString);
+                    isWall = ((tileType == 255) && (wallType != 255));
+                    if ((tileType != 255) || (wallType != 255))
+                    {
+                        int x = args.Player.TempPoints[0].X;
+                        int y = args.Player.TempPoints[0].Y;
+                        for (int y2 = -radius; y2 <= radius; y2++)
+                        {
+
+                            for (int x2 = -radius; x2 <= radius; x2++)
+                            {
+
+                                if ((Math.Sqrt(Math.Pow(x2, 2) + Math.Pow(y2, 2)) <= radius) && (Math.Sqrt(Math.Pow(x2, 2) + Math.Pow(y2, 2)) >= radius - 1))
+                                {
+
+                                    if (!isWall)
+                                    {
+                                        changeTile(x + x2, y + y2, tileType, 255);
+                                    }
+                                    else
+                                    {
+                                        changeTile(x + x2, y + y2, 255, wallType);
+                                    }
+
+                                }
+
+                            }
+
+                        }
+                        for (int y2 = -radius; y2 <= radius; y2++)
+                        {
+
+                            for (int x2 = -radius; x2 <= radius; x2++)
+                            {
+
+                                TSPlayer.All.SendTileSquare(x + x2, y + y2, 3);
+
+                            }
+
+                        }
+                        args.Player.TempPoints[0] = System.Drawing.Point.Empty;
+                        args.Player.TempPoints[1] = System.Drawing.Point.Empty;
+                        args.Player.SendMessage("Tiles changed!");
+                    }
+                    else
+                    {
+
+                        args.Player.SendMessage("That is not a recognized tile type.", System.Drawing.Color.Red);
+
+                    }
+                }
+                else
+                {
+                    args.Player.SendMessage("Point 1 not set up yet", System.Drawing.Color.Red);
+                }
+            }
+            else
+            {
+
+                args.Player.SendMessage("Improper syntax! Proper syntax: /circleoutline radius blocktype", System.Drawing.Color.Red);
+
+            }
+
+        }
+
+        public static void SemiCircle(CommandArgs args)
+        {
+
+            if (args.Parameters.Count > 2)
+            {
+                if (args.Player.TempPoints[0] != PointF.Empty)
+                {
+                    int radius;
+                    try { radius = Convert.ToInt32(args.Parameters[1]); }
+                    catch (Exception) { args.Player.SendMessage("The radius needs to be an integer.", System.Drawing.Color.Red); return; }
+                    string theString = "";
+                    for (int i = 2; i < args.Parameters.Count; i++)
+                    {
+
+                        if (i + 1 != args.Parameters.Count)
+                        {
+                            theString += args.Parameters[i] + " ";
+                        }
+                        else
+                        {
+                            theString += args.Parameters[i];
+                        }
+
+                    }
+                    bool isWall = false;
+                    byte tileType = findTileType(theString);
+                    byte wallType = findWallType(theString);
+                    isWall = ((tileType == 255) && (wallType != 255));
+                    if ((tileType != 255) || (wallType != 255))
+                    {
+                        int x = args.Player.TempPoints[0].X;
+                        int y = args.Player.TempPoints[0].Y;
+                        switch (args.Parameters[0].ToLower())
+                        {
+
+                            case "left": for (int y2 = -radius; y2 <= radius; y2++)
+                                {
+
+                                    for (int x2 = -radius; x2 <= 0; x2++)
+                                    {
+
+                                        if (Math.Sqrt(Math.Pow(x2, 2) + Math.Pow(y2, 2)) <= radius)
+                                        {
+
+                                            if (!isWall)
+                                            {
+                                                changeTile(x + x2, y + y2, tileType, 255);
+                                            }
+                                            else
+                                            {
+                                                changeTile(x + x2, y + y2, 255, wallType);
+                                            }
+
+                                        }
+
+                                    }
+
+                                } break;
+                            case "right": for (int y2 = -radius; y2 <= radius; y2++)
+                                {
+
+                                    for (int x2 = 0; x2 <= radius; x2++)
+                                    {
+
+                                        if (Math.Sqrt(Math.Pow(x2, 2) + Math.Pow(y2, 2)) <= radius)
+                                        {
+
+                                            if (!isWall)
+                                            {
+                                                changeTile(x + x2, y + y2, tileType, 255);
+                                            }
+                                            else
+                                            {
+                                                changeTile(x + x2, y + y2, 255, wallType);
+                                            }
+
+                                        }
+
+                                    }
+
+                                } break;
+                            case "top": for (int y2 = -radius; y2 <= 0; y2++)
+                                {
+
+                                    for (int x2 = -radius; x2 <= radius; x2++)
+                                    {
+
+                                        if (Math.Sqrt(Math.Pow(x2, 2) + Math.Pow(y2, 2)) <= radius)
+                                        {
+
+                                            if (!isWall)
+                                            {
+                                                changeTile(x + x2, y + y2, tileType, 255);
+                                            }
+                                            else
+                                            {
+                                                changeTile(x + x2, y + y2, 255, wallType);
+                                            }
+
+                                        }
+
+                                    }
+
+                                } break;
+                            case "bottom": for (int y2 = 0; y2 <= radius; y2++)
+                                {
+
+                                    for (int x2 = -radius; x2 <= radius; x2++)
+                                    {
+
+                                        if (Math.Sqrt(Math.Pow(x2, 2) + Math.Pow(y2, 2)) <= radius)
+                                        {
+
+                                            if (!isWall)
+                                            {
+                                                changeTile(x + x2, y + y2, tileType, 255);
+                                            }
+                                            else
+                                            {
+                                                changeTile(x + x2, y + y2, 255, wallType);
+                                            }
+
+                                        }
+
+                                    }
+
+                                } break;
+                            default: args.Player.SendMessage("Improper syntax! Proper syntax: /semicircle top|left|bottom|right radius blocktype", System.Drawing.Color.Red); return;
+
+                        }
+                        for (int y2 = -radius; y2 <= radius; y2++)
+                        {
+
+                            for (int x2 = -radius; x2 <= radius; x2++)
+                            {
+
+                                TSPlayer.All.SendTileSquare(x + x2, y + y2, 3);
+
+                            }
+
+                        }
+                        args.Player.TempPoints[0] = System.Drawing.Point.Empty;
+                        args.Player.TempPoints[1] = System.Drawing.Point.Empty;
+                        args.Player.SendMessage("Tiles changed!");
+                    }
+                    else
+                    {
+
+                        args.Player.SendMessage("That is not a recognized tile type.", System.Drawing.Color.Red);
+
+                    }
+                }
+                else
+                {
+                    args.Player.SendMessage("Point 1 not set up yet", System.Drawing.Color.Red);
+                }
+            }
+            else
+            {
+
+                args.Player.SendMessage("Improper syntax! Proper syntax: /semicircle top|left|bottom|right radius blocktype", System.Drawing.Color.Red);
+
+            }
+
+        }
+
+        public static void SemiCircleOutline(CommandArgs args)
+        {
+
+            if (args.Parameters.Count > 2)
+            {
+                if (args.Player.TempPoints[0] != PointF.Empty)
+                {
+                    int radius;
+                    try { radius = Convert.ToInt32(args.Parameters[1]); }
+                    catch (Exception) { args.Player.SendMessage("The radius needs to be an integer.", System.Drawing.Color.Red); return; }
+                    string theString = "";
+                    for (int i = 2; i < args.Parameters.Count; i++)
+                    {
+
+                        if (i + 1 != args.Parameters.Count)
+                        {
+                            theString += args.Parameters[i] + " ";
+                        }
+                        else
+                        {
+                            theString += args.Parameters[i];
+                        }
+
+                    }
+                    bool isWall = false;
+                    byte tileType = findTileType(theString);
+                    byte wallType = findWallType(theString);
+                    isWall = ((tileType == 255) && (wallType != 255));
+                    if ((tileType != 255) || (wallType != 255))
+                    {
+                        int x = args.Player.TempPoints[0].X;
+                        int y = args.Player.TempPoints[0].Y;
+                        switch (args.Parameters[0].ToLower())
+                        {
+
+                            case "left": for (int y2 = -radius; y2 <= radius; y2++)
+                                {
+
+                                    for (int x2 = -radius; x2 <= 0; x2++)
+                                    {
+
+                                        if ((Math.Sqrt(Math.Pow(x2, 2) + Math.Pow(y2, 2)) <= radius) && (Math.Sqrt(Math.Pow(x2, 2) + Math.Pow(y2, 2)) >= radius - 1))
+                                        {
+
+                                            if (!isWall)
+                                            {
+                                                changeTile(x + x2, y + y2, tileType, 255);
+                                            }
+                                            else
+                                            {
+                                                changeTile(x + x2, y + y2, 255, wallType);
+                                            }
+
+                                        }
+
+                                    }
+
+                                } break;
+                            case "right": for (int y2 = -radius; y2 <= radius; y2++)
+                                {
+
+                                    for (int x2 = 0; x2 <= radius; x2++)
+                                    {
+
+                                        if ((Math.Sqrt(Math.Pow(x2, 2) + Math.Pow(y2, 2)) <= radius) && (Math.Sqrt(Math.Pow(x2, 2) + Math.Pow(y2, 2)) >= radius - 1))
+                                        {
+
+                                            if (!isWall)
+                                            {
+                                                changeTile(x + x2, y + y2, tileType, 255);
+                                            }
+                                            else
+                                            {
+                                                changeTile(x + x2, y + y2, 255, wallType);
+                                            }
+
+                                        }
+
+                                    }
+
+                                } break;
+                            case "top": for (int y2 = -radius; y2 <= 0; y2++)
+                                {
+
+                                    for (int x2 = -radius; x2 <= radius; x2++)
+                                    {
+
+                                        if ((Math.Sqrt(Math.Pow(x2, 2) + Math.Pow(y2, 2)) <= radius) && (Math.Sqrt(Math.Pow(x2, 2) + Math.Pow(y2, 2)) >= radius - 1))
+                                        {
+
+                                            if (!isWall)
+                                            {
+                                                changeTile(x + x2, y + y2, tileType, 255);
+                                            }
+                                            else
+                                            {
+                                                changeTile(x + x2, y + y2, 255, wallType);
+                                            }
+
+                                        }
+
+                                    }
+
+                                } break;
+                            case "bottom": for (int y2 = 0; y2 <= radius; y2++)
+                                {
+
+                                    for (int x2 = -radius; x2 <= radius; x2++)
+                                    {
+
+                                        if ((Math.Sqrt(Math.Pow(x2, 2) + Math.Pow(y2, 2)) <= radius) && (Math.Sqrt(Math.Pow(x2, 2) + Math.Pow(y2, 2)) >= radius - 1))
+                                        {
+
+                                            if (!isWall)
+                                            {
+                                                changeTile(x + x2, y + y2, tileType, 255);
+                                            }
+                                            else
+                                            {
+                                                changeTile(x + x2, y + y2, 255, wallType);
+                                            }
+
+                                        }
+
+                                    }
+
+                                } break;
+                            default: args.Player.SendMessage("Improper syntax! Proper syntax: /semicircleoutline top|left|bottom|right radius blocktype", System.Drawing.Color.Red); return;
+
+                        }
+                        for (int y2 = -radius; y2 <= radius; y2++)
+                        {
+
+                            for (int x2 = -radius; x2 <= radius; x2++)
+                            {
+
+                                TSPlayer.All.SendTileSquare(x + x2, y + y2, 3);
+
+                            }
+
+                        }
+                        args.Player.TempPoints[0] = System.Drawing.Point.Empty;
+                        args.Player.TempPoints[1] = System.Drawing.Point.Empty;
+                        args.Player.SendMessage("Tiles changed!");
+                    }
+                    else
+                    {
+
+                        args.Player.SendMessage("That is not a recognized tile type.", System.Drawing.Color.Red);
+
+                    }
+                }
+                else
+                {
+                    args.Player.SendMessage("Point 1 not set up yet", System.Drawing.Color.Red);
+                }
+            }
+            else
+            {
+
+                args.Player.SendMessage("Improper syntax! Proper syntax: /semicircleoutline top|left|bottom|right radius blocktype", System.Drawing.Color.Red);
+
+            }
+
         }
 
         public static void changeTile(int x, int y, byte type, byte wall)
