@@ -7,8 +7,7 @@ using Community.CsharpSqlite.SQLiteClient;
 using MySql.Data.MySqlClient;
 using Microsoft.Xna.Framework;
 using Terraria;
-using TerrariaAPI;
-using TerrariaAPI.Hooks;
+using Hooks;
 using TShockAPI;
 using TShockAPI.DB;
 using System.ComponentModel;
@@ -34,10 +33,10 @@ namespace PluginTemplate
         public static int[] clipboardType = new int[256];
         public static bool[] cut = new bool[256];
         public static TileCollection[] undoTiles = new TileCollection[256];
-        public static System.Drawing.Point[] undoPoint1 = new System.Drawing.Point[256];
-        public static System.Drawing.Point[] undoPoint2 = new System.Drawing.Point[256];
-        public static System.Drawing.Point[] lastArea1 = new System.Drawing.Point[256];
-        public static System.Drawing.Point[] lastArea2 = new System.Drawing.Point[256];
+        public static Point[] undoPoint1 = new Point[256];
+        public static Point[] undoPoint2 = new Point[256];
+        public static Point[] lastArea1 = new Point[256];
+        public static Point[] lastArea2 = new Point[256];
         public override string Name
         {
             get { return "TileEditing"; }
@@ -60,10 +59,13 @@ namespace PluginTemplate
             GameHooks.Initialize += OnInitialize;
             ServerHooks.Leave += OnLeave;
         }
-        public override void DeInitialize()
+        protected override void  Dispose(bool disposing)
         {
-            GameHooks.Initialize -= OnInitialize;
-            ServerHooks.Leave -= OnLeave;
+            if (disposing)
+            {
+                GameHooks.Initialize -= OnInitialize;
+                ServerHooks.Leave -= OnLeave;
+            }
         }
         public PluginTemplate(Main game)
             : base(game)
@@ -82,10 +84,10 @@ namespace PluginTemplate
                 copyH[i] = 0;
                 clipboardType[i] = 0;
                 brushStroke[i] = 1.0;
-                lastArea1[i] = System.Drawing.Point.Empty;
-                lastArea2[i] = System.Drawing.Point.Empty;
-                undoPoint1[i] = System.Drawing.Point.Empty;
-                undoPoint2[i] = System.Drawing.Point.Empty;
+                lastArea1[i] = Point.Zero;
+                lastArea2[i] = Point.Zero;
+                undoPoint1[i] = Point.Zero;
+                undoPoint2[i] = Point.Zero;
                 cut[i] = false;
 
             }
@@ -195,15 +197,15 @@ namespace PluginTemplate
             copyH[ply] = 0;
             cut[ply] = false;
             brushStroke[ply] = 1.0;
-            lastArea1[ply] = System.Drawing.Point.Empty;
-            lastArea2[ply] = System.Drawing.Point.Empty;
+            lastArea1[ply] = Point.Zero;
+            lastArea2[ply] = Point.Zero;
 
         }
 
         public static void Undo(CommandArgs args)
         {
 
-            if (undoPoint1[args.Player.Index] != PointF.Empty)
+            if (undoPoint1[args.Player.Index] != Point.Zero)
             {
 
                 int width = Math.Abs(undoPoint1[args.Player.Index].X - undoPoint2[args.Player.Index].X);
@@ -269,10 +271,10 @@ namespace PluginTemplate
         public static void LastArea(CommandArgs args)
         {
 
-            if (lastArea1[args.Player.Index] != PointF.Empty)
+            if (lastArea1[args.Player.Index] != Point.Zero)
             {
 
-                if (lastArea2[args.Player.Index] != PointF.Empty)
+                if (lastArea2[args.Player.Index] != Point.Zero)
                 {
 
                     args.Player.TempPoints[0] = lastArea1[args.Player.Index];
@@ -284,7 +286,7 @@ namespace PluginTemplate
                 {
 
                     args.Player.TempPoints[0] = lastArea1[args.Player.Index];
-                    args.Player.SendMessage("Temp point 1 reset.", System.Drawing.Color.Orange);
+                    args.Player.SendMessage("Temp point 1 reset.", Color.Orange);
 
                 }
 
@@ -292,11 +294,11 @@ namespace PluginTemplate
             else
             {
 
-                args.Player.SendMessage("You haven't set any points in the past.", System.Drawing.Color.Red);
+                args.Player.SendMessage("You haven't set any points in the past.", Color.Red);
 
             }
-            lastArea1[args.Player.Index] = System.Drawing.Point.Empty;
-            lastArea2[args.Player.Index] = System.Drawing.Point.Empty;
+            lastArea1[args.Player.Index] = Point.Zero;
+            lastArea2[args.Player.Index] = Point.Zero;
 
         }
         public static void BrushStroke(CommandArgs args)
@@ -312,13 +314,13 @@ namespace PluginTemplate
                     args.Player.SendMessage("Your brushstroke size has been changed to " + brushStroke[args.Player.Index].ToString());
 
                 }
-                catch (Exception) { args.Player.SendMessage("You must give us a proper number.", System.Drawing.Color.Red); return; }
+                catch (Exception) { args.Player.SendMessage("You must give us a proper number.", Color.Red); return; }
 
             }
             else
             {
 
-                args.Player.SendMessage("Improper Syntax. Proper Syntax: /brushstroke size", System.Drawing.Color.Red);
+                args.Player.SendMessage("Improper Syntax. Proper Syntax: /brushstroke size", Color.Red);
 
             }
 
@@ -329,7 +331,7 @@ namespace PluginTemplate
 
             if (args.Parameters.Count > 0)
             {
-                if (!args.Player.TempPoints.Any(p => p == PointF.Empty))
+                if (!args.Player.TempPoints.Any(p => p == Point.Zero))
                 {
 
                     string theString = "";
@@ -495,26 +497,26 @@ namespace PluginTemplate
                         }
                         lastArea1[args.Player.Index] = args.Player.TempPoints[0];
                         lastArea2[args.Player.Index] = args.Player.TempPoints[1];
-                        args.Player.TempPoints[0] = System.Drawing.Point.Empty;
-                        args.Player.TempPoints[1] = System.Drawing.Point.Empty;
+                        args.Player.TempPoints[0] = Point.Zero;
+                        args.Player.TempPoints[1] = Point.Zero;
                         args.Player.SendMessage("Tiles changed!");
                     }
                     else
                     {
 
-                        args.Player.SendMessage("That is not a recognized tile type.", System.Drawing.Color.Red);
+                        args.Player.SendMessage("That is not a recognized tile type.", Color.Red);
 
                     }
                 }
                 else
                 {
-                    args.Player.SendMessage("Points not set up yet", System.Drawing.Color.Red);
+                    args.Player.SendMessage("Points not set up yet", Color.Red);
                 }
             }
             else
             {
 
-                args.Player.SendMessage("Improper syntax! Proper syntax: /line blocktype", System.Drawing.Color.Red);
+                args.Player.SendMessage("Improper syntax! Proper syntax: /line blocktype", Color.Red);
 
             }
 
@@ -526,7 +528,7 @@ namespace PluginTemplate
             if (args.Parameters.Count > 1)
             {
 
-                if (!args.Player.TempPoints.Any(p => p == PointF.Empty))
+                if (!args.Player.TempPoints.Any(p => p == Point.Zero))
                 {
 
                     string theString = "";
@@ -612,35 +614,35 @@ namespace PluginTemplate
                             }
                             lastArea1[args.Player.Index] = args.Player.TempPoints[0];
                             lastArea2[args.Player.Index] = args.Player.TempPoints[1];
-                            args.Player.TempPoints[0] = System.Drawing.Point.Empty;
-                            args.Player.TempPoints[1] = System.Drawing.Point.Empty;
+                            args.Player.TempPoints[0] = Point.Zero;
+                            args.Player.TempPoints[1] = Point.Zero;
                             args.Player.SendMessage("Tiles changed!");
                         }
                         else
                         {
 
 
-                            args.Player.SendMessage(theString + " is not a recognized tile type.", System.Drawing.Color.Red);
+                            args.Player.SendMessage(theString + " is not a recognized tile type.", Color.Red);
 
                         }
                     }
                     else
                     {
 
-                        args.Player.SendMessage(args.Parameters[0] + " is not a recognized tile type.", System.Drawing.Color.Red);
+                        args.Player.SendMessage(args.Parameters[0] + " is not a recognized tile type.", Color.Red);
 
                     }
                 }
                 else
                 {
-                    args.Player.SendMessage("Points not set up yet", System.Drawing.Color.Red);
+                    args.Player.SendMessage("Points not set up yet", Color.Red);
                 }
 
             }
             else
             {
 
-                args.Player.SendMessage("Improper Syntax. Proper Syntax: /replace tiletype1 tiletype2", System.Drawing.Color.Red);
+                args.Player.SendMessage("Improper Syntax. Proper Syntax: /replace tiletype1 tiletype2", Color.Red);
 
             }
 
@@ -651,7 +653,7 @@ namespace PluginTemplate
 
             if (args.Parameters.Count > 0)
             {
-                if (!args.Player.TempPoints.Any(p => p == PointF.Empty))
+                if (!args.Player.TempPoints.Any(p => p == Point.Zero))
                 {
                     
                     string theString = "";
@@ -714,26 +716,26 @@ namespace PluginTemplate
                         }
                         lastArea1[args.Player.Index] = args.Player.TempPoints[0];
                         lastArea2[args.Player.Index] = args.Player.TempPoints[1];
-                        args.Player.TempPoints[0] = System.Drawing.Point.Empty;
-                        args.Player.TempPoints[1] = System.Drawing.Point.Empty;
+                        args.Player.TempPoints[0] = Point.Zero;
+                        args.Player.TempPoints[1] = Point.Zero;
                         args.Player.SendMessage("Tiles changed!");
                     }
                     else
                     {
 
-                        args.Player.SendMessage("That is not a recognized tile type.", System.Drawing.Color.Red);
+                        args.Player.SendMessage("That is not a recognized tile type.", Color.Red);
 
                     }
                 }
                 else
                 {
-                    args.Player.SendMessage("Points not set up yet", System.Drawing.Color.Red);
+                    args.Player.SendMessage("Points not set up yet", Color.Red);
                 }
             }
             else
             {
 
-                args.Player.SendMessage("Improper syntax! Proper syntax: /oval blocktype", System.Drawing.Color.Red);
+                args.Player.SendMessage("Improper syntax! Proper syntax: /oval blocktype", Color.Red);
 
             }
 
@@ -744,7 +746,7 @@ namespace PluginTemplate
 
             if (args.Parameters.Count > 1)
             {
-                if (!args.Player.TempPoints.Any(p => p == PointF.Empty))
+                if (!args.Player.TempPoints.Any(p => p == Point.Zero))
                 {
 
                     string theString = "";
@@ -836,7 +838,7 @@ namespace PluginTemplate
 
                                         }
                                         break;
-                                    default: args.Player.SendMessage("Improper syntax! Proper syntax: /semioval top|left|bottom|right blocktype", System.Drawing.Color.Red); return;
+                                    default: args.Player.SendMessage("Improper syntax! Proper syntax: /semioval top|left|bottom|right blocktype", Color.Red); return;
 
                                 }
 
@@ -856,26 +858,26 @@ namespace PluginTemplate
                         }
                         lastArea1[args.Player.Index] = args.Player.TempPoints[0];
                         lastArea2[args.Player.Index] = args.Player.TempPoints[1];
-                        args.Player.TempPoints[0] = System.Drawing.Point.Empty;
-                        args.Player.TempPoints[1] = System.Drawing.Point.Empty;
+                        args.Player.TempPoints[0] = Point.Zero;
+                        args.Player.TempPoints[1] = Point.Zero;
                         args.Player.SendMessage("Tiles changed!");
                     }
                     else
                     {
 
-                        args.Player.SendMessage("That is not a recognized tile type.", System.Drawing.Color.Red);
+                        args.Player.SendMessage("That is not a recognized tile type.", Color.Red);
 
                     }
                 }
                 else
                 {
-                    args.Player.SendMessage("Points not set up yet", System.Drawing.Color.Red);
+                    args.Player.SendMessage("Points not set up yet", Color.Red);
                 }
             }
             else
             {
 
-                args.Player.SendMessage("Improper syntax! Proper syntax: /semioval top|left|bottom|right blocktype", System.Drawing.Color.Red);
+                args.Player.SendMessage("Improper syntax! Proper syntax: /semioval top|left|bottom|right blocktype", Color.Red);
 
             }
 
@@ -886,7 +888,7 @@ namespace PluginTemplate
 
             if (args.Parameters.Count > 1)
             {
-                if (!args.Player.TempPoints.Any(p => p == PointF.Empty))
+                if (!args.Player.TempPoints.Any(p => p == Point.Zero))
                 {
 
                     string theString = "";
@@ -978,7 +980,7 @@ namespace PluginTemplate
 
                                         }
                                         break;
-                                    default: args.Player.SendMessage("Improper syntax! Proper syntax: /semiovaloutline top|left|bottom|right blocktype", System.Drawing.Color.Red); return;
+                                    default: args.Player.SendMessage("Improper syntax! Proper syntax: /semiovaloutline top|left|bottom|right blocktype", Color.Red); return;
 
                                 }
 
@@ -998,26 +1000,26 @@ namespace PluginTemplate
                         }
                         lastArea1[args.Player.Index] = args.Player.TempPoints[0];
                         lastArea2[args.Player.Index] = args.Player.TempPoints[1];
-                        args.Player.TempPoints[0] = System.Drawing.Point.Empty;
-                        args.Player.TempPoints[1] = System.Drawing.Point.Empty;
+                        args.Player.TempPoints[0] = Point.Zero;
+                        args.Player.TempPoints[1] = Point.Zero;
                         args.Player.SendMessage("Tiles changed!");
                     }
                     else
                     {
 
-                        args.Player.SendMessage("That is not a recognized tile type.", System.Drawing.Color.Red);
+                        args.Player.SendMessage("That is not a recognized tile type.", Color.Red);
 
                     }
                 }
                 else
                 {
-                    args.Player.SendMessage("Points not set up yet", System.Drawing.Color.Red);
+                    args.Player.SendMessage("Points not set up yet", Color.Red);
                 }
             }
             else
             {
 
-                args.Player.SendMessage("Improper syntax! Proper syntax: /semiovaloutline top|left|bottom|right blocktype", System.Drawing.Color.Red);
+                args.Player.SendMessage("Improper syntax! Proper syntax: /semiovaloutline top|left|bottom|right blocktype", Color.Red);
 
             }
 
@@ -1028,7 +1030,7 @@ namespace PluginTemplate
 
             if (args.Parameters.Count > 0)
             {
-                if (!args.Player.TempPoints.Any(p => p == PointF.Empty))
+                if (!args.Player.TempPoints.Any(p => p == Point.Zero))
                 {
 
                     string theString = "";
@@ -1090,26 +1092,26 @@ namespace PluginTemplate
                         }
                         lastArea1[args.Player.Index] = args.Player.TempPoints[0];
                         lastArea2[args.Player.Index] = args.Player.TempPoints[1];
-                        args.Player.TempPoints[0] = System.Drawing.Point.Empty;
-                        args.Player.TempPoints[1] = System.Drawing.Point.Empty;
+                        args.Player.TempPoints[0] = Point.Zero;
+                        args.Player.TempPoints[1] = Point.Zero;
                         args.Player.SendMessage("Tiles changed!");
                     }
                     else
                     {
 
-                        args.Player.SendMessage("That is not a recognized tile type.", System.Drawing.Color.Red);
+                        args.Player.SendMessage("That is not a recognized tile type.", Color.Red);
 
                     }
                 }
                 else
                 {
-                    args.Player.SendMessage("Points not set up yet", System.Drawing.Color.Red);
+                    args.Player.SendMessage("Points not set up yet", Color.Red);
                 }
             }
             else
             {
 
-                args.Player.SendMessage("Improper syntax! Proper syntax: /ovaloutline blocktype", System.Drawing.Color.Red);
+                args.Player.SendMessage("Improper syntax! Proper syntax: /ovaloutline blocktype", Color.Red);
 
             }
 
@@ -1121,7 +1123,7 @@ namespace PluginTemplate
             if ((copyW[args.Player.Index] != 0) || (copyH[args.Player.Index] != 0))
             {
 
-                if (args.Player.TempPoints[0] != PointF.Empty)
+                if (args.Player.TempPoints[0] != Point.Zero)
                 {
 
                     int X, Y;
@@ -1133,7 +1135,7 @@ namespace PluginTemplate
                     if (rectCollision(copyX[i], copyY[i], copyX[i] + width, copyY[i] + height, x, y, x + width, y + height))
                     {
 
-                        args.Player.SendMessage("You cannot paste into the cut/copied area.", System.Drawing.Color.Red);
+                        args.Player.SendMessage("You cannot paste into the cut/copied area.", Color.Red);
                         return;
 
                     }
@@ -1289,19 +1291,19 @@ namespace PluginTemplate
                     }
                     lastArea1[args.Player.Index] = args.Player.TempPoints[0];
                     lastArea2[args.Player.Index] = args.Player.TempPoints[1];
-                    args.Player.TempPoints[0] = System.Drawing.Point.Empty;
-                    args.Player.TempPoints[1] = System.Drawing.Point.Empty;
+                    args.Player.TempPoints[0] = Point.Zero;
+                    args.Player.TempPoints[1] = Point.Zero;
                     args.Player.SendMessage("You have pasted from the clipboard.");
                 }
                 else
                 {
-                    args.Player.SendMessage("Point not set up yet", System.Drawing.Color.Red);
+                    args.Player.SendMessage("Point not set up yet", Color.Red);
                 }
             }
             else
             {
 
-                args.Player.SendMessage("You need to copy something first!", System.Drawing.Color.Red);
+                args.Player.SendMessage("You need to copy something first!", Color.Red);
 
             }
 
@@ -1319,7 +1321,7 @@ namespace PluginTemplate
                     case "all": clipboardType[args.Player.Index] = 0; break;
                     case "front": clipboardType[args.Player.Index] = 1; break;
                     case "back": clipboardType[args.Player.Index] = 2; break;
-                    default: args.Player.SendMessage("Improper syntax.  Proper Syntax: /copy [all|front|back]", System.Drawing.Color.Red); return;
+                    default: args.Player.SendMessage("Improper syntax.  Proper Syntax: /copy [all|front|back]", Color.Red); return;
 
                 }
 
@@ -1331,7 +1333,7 @@ namespace PluginTemplate
 
             }
             cut[args.Player.Index] = false;
-            if (!args.Player.TempPoints.Any(p => p == PointF.Empty))
+            if (!args.Player.TempPoints.Any(p => p == Point.Zero))
             {
 
                 copyX[args.Player.Index] = Math.Min(args.Player.TempPoints[0].X, args.Player.TempPoints[1].X);
@@ -1340,13 +1342,13 @@ namespace PluginTemplate
                 copyH[args.Player.Index] = Math.Abs(args.Player.TempPoints[0].Y - args.Player.TempPoints[1].Y);
                 lastArea1[args.Player.Index] = args.Player.TempPoints[0];
                 lastArea2[args.Player.Index] = args.Player.TempPoints[1];
-                args.Player.TempPoints[0] = System.Drawing.Point.Empty;
-                args.Player.TempPoints[1] = System.Drawing.Point.Empty;
+                args.Player.TempPoints[0] = Point.Zero;
+                args.Player.TempPoints[1] = Point.Zero;
                 args.Player.SendMessage("You have successfully copied to the clipboard.");
             }
             else
             {
-                args.Player.SendMessage("Points not set up yet", System.Drawing.Color.Red);
+                args.Player.SendMessage("Points not set up yet", Color.Red);
             }
 
         }
@@ -1363,7 +1365,7 @@ namespace PluginTemplate
                     case "all": clipboardType[args.Player.Index] = 0; break;
                     case "front": clipboardType[args.Player.Index] = 1; break;
                     case "back": clipboardType[args.Player.Index] = 2; break;
-                    default: args.Player.SendMessage("Improper syntax.  Proper Syntax: /cut [all|front|back]", System.Drawing.Color.Red); return;
+                    default: args.Player.SendMessage("Improper syntax.  Proper Syntax: /cut [all|front|back]", Color.Red); return;
 
                 }
 
@@ -1375,7 +1377,7 @@ namespace PluginTemplate
 
             }
             cut[args.Player.Index] = true;
-            if (!args.Player.TempPoints.Any(p => p == PointF.Empty))
+            if (!args.Player.TempPoints.Any(p => p == Point.Zero))
             {
 
                 copyX[args.Player.Index] = Math.Min(args.Player.TempPoints[0].X, args.Player.TempPoints[1].X);
@@ -1384,13 +1386,13 @@ namespace PluginTemplate
                 copyH[args.Player.Index] = Math.Abs(args.Player.TempPoints[0].Y - args.Player.TempPoints[1].Y);
                 lastArea1[args.Player.Index] = args.Player.TempPoints[0];
                 lastArea2[args.Player.Index] = args.Player.TempPoints[1];
-                args.Player.TempPoints[0] = System.Drawing.Point.Empty;
-                args.Player.TempPoints[1] = System.Drawing.Point.Empty;
+                args.Player.TempPoints[0] = Point.Zero;
+                args.Player.TempPoints[1] = Point.Zero;
                 args.Player.SendMessage("You have successfully cut to the clipboard.");
             }
             else
             {
-                args.Player.SendMessage("Points not set up yet", System.Drawing.Color.Red);
+                args.Player.SendMessage("Points not set up yet", Color.Red);
             }
 
         }
@@ -1400,7 +1402,7 @@ namespace PluginTemplate
 
             if (args.Parameters.Count >= 1)
             {
-                if (!args.Player.TempPoints.Any(p => p == PointF.Empty))
+                if (!args.Player.TempPoints.Any(p => p == Point.Zero))
                 {
 
                     int x = Math.Min(args.Player.TempPoints[0].X, args.Player.TempPoints[1].X);
@@ -1462,19 +1464,19 @@ namespace PluginTemplate
                     }
                     lastArea1[args.Player.Index] = args.Player.TempPoints[0];
                     lastArea2[args.Player.Index] = args.Player.TempPoints[1];
-                    args.Player.TempPoints[0] = System.Drawing.Point.Empty;
-                    args.Player.TempPoints[1] = System.Drawing.Point.Empty;
+                    args.Player.TempPoints[0] = Point.Zero;
+                    args.Player.TempPoints[1] = Point.Zero;
                     args.Player.SendMessage("Tiles cleared!");
                 }
                 else
                 {
-                    args.Player.SendMessage("Points not set up yet", System.Drawing.Color.Red);
+                    args.Player.SendMessage("Points not set up yet", Color.Red);
                 }
             }
             else
             {
 
-                if (!args.Player.TempPoints.Any(p => p == PointF.Empty))
+                if (!args.Player.TempPoints.Any(p => p == Point.Zero))
                 {
 
                     int x = Math.Min(args.Player.TempPoints[0].X, args.Player.TempPoints[1].X);
@@ -1508,13 +1510,13 @@ namespace PluginTemplate
                     }
                     lastArea1[args.Player.Index] = args.Player.TempPoints[0];
                     lastArea2[args.Player.Index] = args.Player.TempPoints[1];
-                    args.Player.TempPoints[0] = System.Drawing.Point.Empty;
-                    args.Player.TempPoints[1] = System.Drawing.Point.Empty;
+                    args.Player.TempPoints[0] = Point.Zero;
+                    args.Player.TempPoints[1] = Point.Zero;
                     args.Player.SendMessage("Tiles cleared!");
                 }
                 else
                 {
-                    args.Player.SendMessage("Points not set up yet", System.Drawing.Color.Red);
+                    args.Player.SendMessage("Points not set up yet", Color.Red);
                 }
 
             }
@@ -1525,7 +1527,7 @@ namespace PluginTemplate
             
             if (args.Parameters.Count > 0)
             {
-                if (!args.Player.TempPoints.Any(p => p == PointF.Empty))
+                if (!args.Player.TempPoints.Any(p => p == Point.Zero))
                 {
                     string theString = "";
                     for (int i = 0; i < args.Parameters.Count; i++)
@@ -1587,26 +1589,26 @@ namespace PluginTemplate
                         }
                         lastArea1[args.Player.Index] = args.Player.TempPoints[0];
                         lastArea2[args.Player.Index] = args.Player.TempPoints[1];
-                        args.Player.TempPoints[0] = System.Drawing.Point.Empty;
-                        args.Player.TempPoints[1] = System.Drawing.Point.Empty;
+                        args.Player.TempPoints[0] = Point.Zero;
+                        args.Player.TempPoints[1] = Point.Zero;
                         args.Player.SendMessage("Tiles changed!"); return;
                     }
                     else
                     {
 
-                        args.Player.SendMessage("That is not a recognized tile type.", System.Drawing.Color.Red);
+                        args.Player.SendMessage("That is not a recognized tile type.", Color.Red);
 
                     }
                 }
                 else
                 {
-                    args.Player.SendMessage("Points not set up yet", System.Drawing.Color.Red);
+                    args.Player.SendMessage("Points not set up yet", Color.Red);
                 }
             }
             else
             {
 
-                args.Player.SendMessage("Improper syntax! Proper syntax: /rectangle blocktype", System.Drawing.Color.Red);
+                args.Player.SendMessage("Improper syntax! Proper syntax: /rectangle blocktype", Color.Red);
 
             }
         }
@@ -1616,7 +1618,7 @@ namespace PluginTemplate
 
             if (args.Parameters.Count > 0)
             {
-                if (!args.Player.TempPoints.Any(p => p == PointF.Empty))
+                if (!args.Player.TempPoints.Any(p => p == Point.Zero))
                 {
                     string theString = "";
                     for (int i = 0; i < args.Parameters.Count; i++)
@@ -1678,26 +1680,26 @@ namespace PluginTemplate
                         }
                         lastArea1[args.Player.Index] = args.Player.TempPoints[0];
                         lastArea2[args.Player.Index] = args.Player.TempPoints[1];
-                        args.Player.TempPoints[0] = System.Drawing.Point.Empty;
-                        args.Player.TempPoints[1] = System.Drawing.Point.Empty;
+                        args.Player.TempPoints[0] = Point.Zero;
+                        args.Player.TempPoints[1] = Point.Zero;
                         args.Player.SendMessage("Tiles changed!");
                     }
                     else
                     {
 
-                        args.Player.SendMessage("That is not a recognized tile type.", System.Drawing.Color.Red);
+                        args.Player.SendMessage("That is not a recognized tile type.", Color.Red);
 
                     }
                 }
                 else
                 {
-                    args.Player.SendMessage("Points not set up yet", System.Drawing.Color.Red);
+                    args.Player.SendMessage("Points not set up yet", Color.Red);
                 }
             }
             else
             {
 
-                args.Player.SendMessage("Improper syntax! Proper syntax: /rectangleoutline blocktype", System.Drawing.Color.Red);
+                args.Player.SendMessage("Improper syntax! Proper syntax: /rectangleoutline blocktype", Color.Red);
 
             }
         }
@@ -1707,11 +1709,11 @@ namespace PluginTemplate
 
             if (args.Parameters.Count > 1)
             {
-                if (args.Player.TempPoints[0] != PointF.Empty)
+                if (args.Player.TempPoints[0] != Point.Zero)
                 {
                     int radius;
                     try { radius = Convert.ToInt32(args.Parameters[0]); }
-                    catch (Exception) { args.Player.SendMessage("The radius needs to be an integer.", System.Drawing.Color.Red); return; }
+                    catch (Exception) { args.Player.SendMessage("The radius needs to be an integer.", Color.Red); return; }
                     string theString = "";
                     for (int i = 1; i < args.Parameters.Count; i++)
                     {
@@ -1770,26 +1772,26 @@ namespace PluginTemplate
                         }
                         lastArea1[args.Player.Index] = args.Player.TempPoints[0];
                         lastArea2[args.Player.Index] = args.Player.TempPoints[1];
-                        args.Player.TempPoints[0] = System.Drawing.Point.Empty;
-                        args.Player.TempPoints[1] = System.Drawing.Point.Empty;
+                        args.Player.TempPoints[0] = Point.Zero;
+                        args.Player.TempPoints[1] = Point.Zero;
                         args.Player.SendMessage("Tiles changed!");
                     }
                     else
                     {
 
-                        args.Player.SendMessage("That is not a recognized tile type.", System.Drawing.Color.Red);
+                        args.Player.SendMessage("That is not a recognized tile type.", Color.Red);
 
                     }
                 }
                 else
                 {
-                    args.Player.SendMessage("Point 1 not set up yet", System.Drawing.Color.Red);
+                    args.Player.SendMessage("Point 1 not set up yet", Color.Red);
                 }
             }
             else
             {
 
-                args.Player.SendMessage("Improper syntax! Proper syntax: /circle radius blocktype", System.Drawing.Color.Red);
+                args.Player.SendMessage("Improper syntax! Proper syntax: /circle radius blocktype", Color.Red);
 
             }
 
@@ -1800,11 +1802,11 @@ namespace PluginTemplate
 
             if (args.Parameters.Count > 1)
             {
-                if (args.Player.TempPoints[0] != PointF.Empty)
+                if (args.Player.TempPoints[0] != Point.Zero)
                 {
                     int radius;
                     try { radius = Convert.ToInt32(args.Parameters[0]); }
-                    catch (Exception) { args.Player.SendMessage("The radius needs to be an integer.", System.Drawing.Color.Red); return; }
+                    catch (Exception) { args.Player.SendMessage("The radius needs to be an integer.", Color.Red); return; }
                     string theString = "";
                     for (int i = 1; i < args.Parameters.Count; i++)
                     {
@@ -1863,26 +1865,26 @@ namespace PluginTemplate
                         }
                         lastArea1[args.Player.Index] = args.Player.TempPoints[0];
                         lastArea2[args.Player.Index] = args.Player.TempPoints[1];
-                        args.Player.TempPoints[0] = System.Drawing.Point.Empty;
-                        args.Player.TempPoints[1] = System.Drawing.Point.Empty;
+                        args.Player.TempPoints[0] = Point.Zero;
+                        args.Player.TempPoints[1] = Point.Zero;
                         args.Player.SendMessage("Tiles changed!");
                     }
                     else
                     {
 
-                        args.Player.SendMessage("That is not a recognized tile type.", System.Drawing.Color.Red);
+                        args.Player.SendMessage("That is not a recognized tile type.", Color.Red);
 
                     }
                 }
                 else
                 {
-                    args.Player.SendMessage("Point 1 not set up yet", System.Drawing.Color.Red);
+                    args.Player.SendMessage("Point 1 not set up yet", Color.Red);
                 }
             }
             else
             {
 
-                args.Player.SendMessage("Improper syntax! Proper syntax: /circleoutline radius blocktype", System.Drawing.Color.Red);
+                args.Player.SendMessage("Improper syntax! Proper syntax: /circleoutline radius blocktype", Color.Red);
 
             }
 
@@ -1893,11 +1895,11 @@ namespace PluginTemplate
 
             if (args.Parameters.Count > 2)
             {
-                if (args.Player.TempPoints[0] != PointF.Empty)
+                if (args.Player.TempPoints[0] != Point.Zero)
                 {
                     int radius;
                     try { radius = Convert.ToInt32(args.Parameters[1]); }
-                    catch (Exception) { args.Player.SendMessage("The radius needs to be an integer.", System.Drawing.Color.Red); return; }
+                    catch (Exception) { args.Player.SendMessage("The radius needs to be an integer.", Color.Red); return; }
                     string theString = "";
                     for (int i = 2; i < args.Parameters.Count; i++)
                     {
@@ -2015,7 +2017,7 @@ namespace PluginTemplate
                                     }
 
                                 } break;
-                            default: args.Player.SendMessage("Improper syntax! Proper syntax: /semicircle top|left|bottom|right radius blocktype", System.Drawing.Color.Red); return;
+                            default: args.Player.SendMessage("Improper syntax! Proper syntax: /semicircle top|left|bottom|right radius blocktype", Color.Red); return;
 
                         }
                         for (int y2 = -radius; y2 <= radius; y2++)
@@ -2031,26 +2033,26 @@ namespace PluginTemplate
                         }
                         lastArea1[args.Player.Index] = args.Player.TempPoints[0];
                         lastArea2[args.Player.Index] = args.Player.TempPoints[1];
-                        args.Player.TempPoints[0] = System.Drawing.Point.Empty;
-                        args.Player.TempPoints[1] = System.Drawing.Point.Empty;
+                        args.Player.TempPoints[0] = Point.Zero;
+                        args.Player.TempPoints[1] = Point.Zero;
                         args.Player.SendMessage("Tiles changed!");
                     }
                     else
                     {
 
-                        args.Player.SendMessage("That is not a recognized tile type.", System.Drawing.Color.Red);
+                        args.Player.SendMessage("That is not a recognized tile type.", Color.Red);
 
                     }
                 }
                 else
                 {
-                    args.Player.SendMessage("Point 1 not set up yet", System.Drawing.Color.Red);
+                    args.Player.SendMessage("Point 1 not set up yet", Color.Red);
                 }
             }
             else
             {
 
-                args.Player.SendMessage("Improper syntax! Proper syntax: /semicircle top|left|bottom|right radius blocktype", System.Drawing.Color.Red);
+                args.Player.SendMessage("Improper syntax! Proper syntax: /semicircle top|left|bottom|right radius blocktype", Color.Red);
 
             }
 
@@ -2061,11 +2063,11 @@ namespace PluginTemplate
 
             if (args.Parameters.Count > 2)
             {
-                if (args.Player.TempPoints[0] != PointF.Empty)
+                if (args.Player.TempPoints[0] != Point.Zero)
                 {
                     int radius;
                     try { radius = Convert.ToInt32(args.Parameters[1]); }
-                    catch (Exception) { args.Player.SendMessage("The radius needs to be an integer.", System.Drawing.Color.Red); return; }
+                    catch (Exception) { args.Player.SendMessage("The radius needs to be an integer.", Color.Red); return; }
                     string theString = "";
                     for (int i = 2; i < args.Parameters.Count; i++)
                     {
@@ -2183,7 +2185,7 @@ namespace PluginTemplate
                                     }
 
                                 } break;
-                            default: args.Player.SendMessage("Improper syntax! Proper syntax: /semicircleoutline top|left|bottom|right radius blocktype", System.Drawing.Color.Red); return;
+                            default: args.Player.SendMessage("Improper syntax! Proper syntax: /semicircleoutline top|left|bottom|right radius blocktype", Color.Red); return;
 
                         }
                         for (int y2 = -radius - (int)(brushStroke[args.Player.Index] / 2); y2 <= radius + (int)(brushStroke[args.Player.Index] / 2); y2++)
@@ -2199,26 +2201,26 @@ namespace PluginTemplate
                         }
                         lastArea1[args.Player.Index] = args.Player.TempPoints[0];
                         lastArea2[args.Player.Index] = args.Player.TempPoints[1];
-                        args.Player.TempPoints[0] = System.Drawing.Point.Empty;
-                        args.Player.TempPoints[1] = System.Drawing.Point.Empty;
+                        args.Player.TempPoints[0] = Point.Zero;
+                        args.Player.TempPoints[1] = Point.Zero;
                         args.Player.SendMessage("Tiles changed!");
                     }
                     else
                     {
 
-                        args.Player.SendMessage("That is not a recognized tile type.", System.Drawing.Color.Red);
+                        args.Player.SendMessage("That is not a recognized tile type.", Color.Red);
 
                     }
                 }
                 else
                 {
-                    args.Player.SendMessage("Point 1 not set up yet", System.Drawing.Color.Red);
+                    args.Player.SendMessage("Point 1 not set up yet", Color.Red);
                 }
             }
             else
             {
 
-                args.Player.SendMessage("Improper syntax! Proper syntax: /semicircleoutline top|left|bottom|right radius blocktype", System.Drawing.Color.Red);
+                args.Player.SendMessage("Improper syntax! Proper syntax: /semicircleoutline top|left|bottom|right radius blocktype", Color.Red);
 
             }
 
