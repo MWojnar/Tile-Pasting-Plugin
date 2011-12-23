@@ -8,3 +8,10 @@ C:\Users\Michael\Downloads\TShock Test\ServerPlugins\TileEditing.pdb
 C:\Users\Michael\Downloads\TShock Test\ServerPlugins\TShockAPI.XML
 C:\Users\Michael\Downloads\TShock 3.3.4.924\ServerPlugins\TileEditing.dll
 C:\Users\Michael\Downloads\TShock 3.3.4.924\ServerPlugins\TileEditing.pdb
+C:\Users\Michael\Downloads\TShock 3.3.4.924\ServerPlugins\TShockAPI.XML
+C:\Users\Michael\Downloads\TShock Buggy\ServerPlugins\TileEditing.dll
+C:\Users\Michael\Downloads\TShock Buggy\ServerPlugins\TileEditing.pdb
+C:\Users\Michael\Downloads\TShock Buggy\ServerPlugins\TShockAPI.XML
+C:\Users\Michael\Downloads\Tshock1.1.1\Tshock1.1.1\ServerPlugins\TShockAPI.XML
+C:\Users\Michael\Downloads\Tshock1.1.1\Tshock1.1.1\ServerPlugins\TileEditing.dll
+C:\Users\Michael\Downloads\Tshock1.1.1\Tshock1.1.1\ServerPlugins\TileEditing.pdb

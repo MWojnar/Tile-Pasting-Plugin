@@ -18,10 +18,10 @@ using System.Net.Sockets;
 using System.Linq;
 using System.Threading;
 
-namespace PluginTemplate
+namespace TileEditing
 {
-    [APIVersion(1, 8)]
-    public class PluginTemplate : TerrariaPlugin
+    [APIVersion(1, 10)]
+    public class TileEditing : TerrariaPlugin
     {
         public static Dictionary<string, byte> tileTypeNames = new Dictionary<string, byte>();
         public static Dictionary<string, byte> wallTypeNames = new Dictionary<string, byte>();
@@ -31,12 +31,12 @@ namespace PluginTemplate
         public static int[] copyW = new int[256];
         public static int[] copyH = new int[256];
         public static int[] clipboardType = new int[256];
+        public static Dictionary<Point, Tile> selectTiles = new Dictionary<Point, Tile>(1000);
         public static bool[] cut = new bool[256];
-        public static TileCollection[] undoTiles = new TileCollection[256];
-        public static Point[] undoPoint1 = new Point[256];
-        public static Point[] undoPoint2 = new Point[256];
-        public static Point[] lastArea1 = new Point[256];
-        public static Point[] lastArea2 = new Point[256];
+        public static List<Point>[] lastAreas = new List<Point>[256];
+        public static List<Point>[] tempPoints = new List<Point>[256];
+        public static int[] awaitingPoint = new int[256];
+        public static Dictionary<Point, TileData> tilesToRevert = new Dictionary<Point, TileData>();
         public override string Name
         {
             get { return "TileEditing"; }
@@ -58,6 +58,9 @@ namespace PluginTemplate
         {
             GameHooks.Initialize += OnInitialize;
             ServerHooks.Leave += OnLeave;
+            NetHooks.GetData += OnGetData;
+            NetHooks.SendData += OnSendData;
+            GameHooks.Update += OnUpdate;
         }
         protected override void  Dispose(bool disposing)
         {
@@ -65,9 +68,12 @@ namespace PluginTemplate
             {
                 GameHooks.Initialize -= OnInitialize;
                 ServerHooks.Leave -= OnLeave;
+                NetHooks.GetData -= OnGetData;
+                NetHooks.SendData -= OnSendData;
+                GameHooks.Update -= OnUpdate;
             }
         }
-        public PluginTemplate(Main game)
+        public TileEditing(Main game)
             : base(game)
         {
             Order = -2;
@@ -84,14 +90,11 @@ namespace PluginTemplate
                 copyH[i] = 0;
                 clipboardType[i] = 0;
                 brushStroke[i] = 1.0;
-                lastArea1[i] = Point.Zero;
-                lastArea2[i] = Point.Zero;
-                undoPoint1[i] = Point.Zero;
-                undoPoint2[i] = Point.Zero;
                 cut[i] = false;
+                tempPoints[i] = new List<Point>();
+                awaitingPoint[i] = 0;
 
             }
-            bool tilepaste = false;
             tileTypeNames.Add("dirt",0);
             tileTypeNames.Add("stone",1);
             tileTypeNames.Add("grass",2);
@@ -107,7 +110,7 @@ namespace PluginTemplate
             tileTypeNames.Add("corruption thorn",32);
             tileTypeNames.Add("meteorite",37);
             tileTypeNames.Add("gray brick",38);
-            tileTypeNames.Add("clay brick",39);
+            tileTypeNames.Add("red brick",39);
             tileTypeNames.Add("clay",40);
             tileTypeNames.Add("blue brick",41);
             tileTypeNames.Add("green brick",43);
@@ -133,6 +136,31 @@ namespace PluginTemplate
             tileTypeNames.Add("mushroom grass", 70);
             tileTypeNames.Add("obsidian brick",75);
             tileTypeNames.Add("hellstone brick", 76);
+            tileTypeNames.Add("cobalt ore", 107);
+            tileTypeNames.Add("mythril ore", 108);
+            tileTypeNames.Add("hallowed grass", 109);
+            tileTypeNames.Add("adamantite ore", 111);
+            tileTypeNames.Add("ebonsand", 112);
+            tileTypeNames.Add("pearlsand", 116);
+            tileTypeNames.Add("pearlstone", 117);
+            tileTypeNames.Add("pearlstone brick", 118);
+            tileTypeNames.Add("iridescent brick", 119);
+            tileTypeNames.Add("mudstone brick", 120);
+            tileTypeNames.Add("cobalt brick", 121);
+            tileTypeNames.Add("mythril brick", 122);
+            tileTypeNames.Add("silt", 123);
+            tileTypeNames.Add("wooden beam", 124);
+            tileTypeNames.Add("ice", 127);
+            tileTypeNames.Add("active stone block", 130);
+            tileTypeNames.Add("inactive stone block", 131);
+            tileTypeNames.Add("dart trap", 137);
+            tileTypeNames.Add("demonite brick", 140);
+            tileTypeNames.Add("explosives", 141);
+            tileTypeNames.Add("inlet pump", 142);
+            tileTypeNames.Add("outlet pump", 143);
+            tileTypeNames.Add("air", 250);
+            tileTypeNames.Add("air back", 251);
+            tileTypeNames.Add("air front", 252);
             tileTypeNames.Add("water", 253);
             tileTypeNames.Add("lava", 254);
             wallTypeNames.Add("stone wall",1);
@@ -151,20 +179,17 @@ namespace PluginTemplate
             wallTypeNames.Add("obsidian brick wall", 14);
             wallTypeNames.Add("mud wall", 15);
             wallTypeNames.Add("dirt wall", 16);
-
-            foreach (Group group in TShock.Groups.groups)
-            {
-                if (group.Name != "superadmin")
-                {
-                    if (group.HasPermission("tilepasting"))
-                        tilepaste = true;
-                }
-            }
+            wallTypeNames.Add("glass wall", 21);
+            wallTypeNames.Add("pearlstone brick wall", 22);
+            wallTypeNames.Add("iridescent brick wall", 23);
+            wallTypeNames.Add("mudstone brick wall", 24);
+            wallTypeNames.Add("cobalt brick wall", 25);
+            wallTypeNames.Add("mythril brick wall", 26);
+            wallTypeNames.Add("planked wall", 27);
+            wallTypeNames.Add("pearlstone wall", 28);
             List<string> permlist = new List<string>();
-            if (!tilepaste)
-                permlist.Add("tilepasting");
+            permlist.Add("tilepasting");
             TShock.Groups.AddPermissions("trustedadmin", permlist);
-            permlist = new List<string>();
 
             Commands.ChatCommands.Add(new Command("tilepasting", Rectangle, "rectangle"));
             Commands.ChatCommands.Add(new Command("tilepasting", RectangleOutline, "rectangleoutline"));
@@ -184,8 +209,332 @@ namespace PluginTemplate
             Commands.ChatCommands.Add(new Command("tilepasting", Replace, "replace"));
             Commands.ChatCommands.Add(new Command("tilepasting", Line, "line"));
             Commands.ChatCommands.Add(new Command("tilepasting", BrushStroke, "brushstroke"));
+            Commands.ChatCommands.Add(new Command("tilepasting", BrushStroke, "brush"));
             Commands.ChatCommands.Add(new Command("tilepasting", LastArea, "lastarea"));
-            Commands.ChatCommands.Add(new Command("tilepasting", Undo, "undo"));
+            //Commands.ChatCommands.Add(new Command("tilepasting", Undo, "undo"));
+            Commands.ChatCommands.Add(new Command("tilepasting", Tiles, "tile"));
+            //Commands.ChatCommands.Add(new Command("tilepasting", Triangle, "triangle"));
+            Commands.ChatCommands.Add(new Command("tilepasting", TriangleOutline, "triangleoutline"));
+            Commands.ChatCommands.Add(new Command("tilepasting", Hallow, "hallow"));
+            Commands.ChatCommands.Add(new Command("tilepasting", Corrupt, "corrupt"));
+            Commands.ChatCommands.Add(new Command("tilepasting", NormalLand, "normalland"));
+        }
+
+        public void Hallow(CommandArgs args)
+        {
+
+            if (tempPoints[args.Player.Index].Count() > 1)
+            {
+
+                        int x = Math.Min(tempPoints[args.Player.Index][0].X, tempPoints[args.Player.Index][1].X);
+                        int y = Math.Min(tempPoints[args.Player.Index][0].Y, tempPoints[args.Player.Index][1].Y);
+                        int width = Math.Abs(tempPoints[args.Player.Index][0].X - tempPoints[args.Player.Index][1].X);
+                        int height = Math.Abs(tempPoints[args.Player.Index][0].Y - tempPoints[args.Player.Index][1].Y);
+                        for (int y2 = height; y2 >= 0; y2--)
+                        {
+
+                            for (int x2 = 0; x2 <= width; x2++)
+                            {
+
+                                switch (Main.tile[x + x2, y + y2].type)
+                                {
+                                    
+                                    case 1: Main.tile[x + x2, y + y2].type = 117; break;
+                                    case 2: Main.tile[x + x2, y + y2].type = 109; break;
+                                    case 3: Main.tile[x + x2, y + y2].type = 110; break;
+                                    case 23: Main.tile[x + x2, y + y2].type = 109; break;
+                                    case 24: Main.tile[x + x2, y + y2].type = 110; break;
+                                    case 25: Main.tile[x + x2, y + y2].type = 117; break;
+                                    case 26: changeTile(x + x2, y + y2, 252, 255); break;
+                                    case 31: changeTile(x + x2, y + y2, 252, 255); break;
+                                    case 32: changeTile(x + x2, y + y2, 252, 255); break;
+                                    case 52: Main.tile[x + x2, y + y2].type = 115; break;
+                                    case 53: Main.tile[x + x2, y + y2].type = 116; break;
+                                    case 73: changeTile(x + x2, y + y2, 252, 255); break;
+                                    case 112: Main.tile[x + x2, y + y2].type = 116; break;
+                                    case 119: Main.tile[x + x2, y + y2].type = 118; break;
+
+                                }
+
+                                if (Main.tile[x + x2, y + y2].wall == 1 || Main.tile[x + x2, y + y2].wall == 3)
+                                    Main.tile[x + x2, y + y2].wall = 28;
+
+                            }
+                            
+                        }
+                        for (int y2 = height; y2 >= 0; y2--)
+                        {
+
+                            for (int x2 = 0; x2 <= width; x2++)
+                            {
+
+                                updateTile(x + x2, y + y2);
+
+                            }
+
+                        }
+                        lastAreas[args.Player.Index] = tempPoints[args.Player.Index];
+                        clearTempPoints((byte)args.Player.Index);
+
+                        args.Player.SendMessage("Tiles changed!");
+
+            }
+            else
+            {
+                args.Player.SendMessage("Points not set up yet", Color.Red);
+            }
+
+        }
+
+        public void Corrupt(CommandArgs args)
+        {
+
+            if (tempPoints[args.Player.Index].Count() > 1)
+            {
+
+                int x = Math.Min(tempPoints[args.Player.Index][0].X, tempPoints[args.Player.Index][1].X);
+                int y = Math.Min(tempPoints[args.Player.Index][0].Y, tempPoints[args.Player.Index][1].Y);
+                int width = Math.Abs(tempPoints[args.Player.Index][0].X - tempPoints[args.Player.Index][1].X);
+                int height = Math.Abs(tempPoints[args.Player.Index][0].Y - tempPoints[args.Player.Index][1].Y);
+                for (int y2 = height; y2 >= 0; y2--)
+                {
+
+                    for (int x2 = 0; x2 <= width; x2++)
+                    {
+
+                        switch (Main.tile[x + x2, y + y2].type)
+                        {
+
+                            case 1: Main.tile[x + x2, y + y2].type = 25; break;
+                            case 2: Main.tile[x + x2, y + y2].type = 23; break;
+                            case 3: Main.tile[x + x2, y + y2].type = 24; break;
+                            case 109: Main.tile[x + x2, y + y2].type = 23; break;
+                            case 110: Main.tile[x + x2, y + y2].type = 24; break;
+                            case 117: Main.tile[x + x2, y + y2].type = 25; break;
+                            case 52: changeTile(x + x2, y + y2, 252, 255); break;
+                            case 53: Main.tile[x + x2, y + y2].type = 112; break;
+                            case 73: changeTile(x + x2, y + y2, 252, 255); break;
+                            case 113: changeTile(x + x2, y + y2, 252, 255); break;
+                            case 115: changeTile(x + x2, y + y2, 252, 255); break;
+                            case 116: Main.tile[x + x2, y + y2].type = 112; break;
+                            case 118: Main.tile[x + x2, y + y2].type = 119; break;
+
+                        }
+
+                        if (Main.tile[x + x2, y + y2].wall == 1 || Main.tile[x + x2, y + y2].wall == 28)
+                            Main.tile[x + x2, y + y2].wall = 3;
+
+                    }
+
+                }
+                for (int y2 = height; y2 >= 0; y2--)
+                {
+
+                    for (int x2 = 0; x2 <= width; x2++)
+                    {
+
+                        updateTile(x + x2, y + y2);
+
+                    }
+
+                }
+                lastAreas[args.Player.Index] = tempPoints[args.Player.Index];
+                clearTempPoints((byte)args.Player.Index);
+
+                args.Player.SendMessage("Tiles changed!");
+
+            }
+            else
+            {
+                args.Player.SendMessage("Points not set up yet", Color.Red);
+            }
+
+        }
+
+        public void NormalLand(CommandArgs args)
+        {
+
+            if (tempPoints[args.Player.Index].Count() > 1)
+            {
+
+                int x = Math.Min(tempPoints[args.Player.Index][0].X, tempPoints[args.Player.Index][1].X);
+                int y = Math.Min(tempPoints[args.Player.Index][0].Y, tempPoints[args.Player.Index][1].Y);
+                int width = Math.Abs(tempPoints[args.Player.Index][0].X - tempPoints[args.Player.Index][1].X);
+                int height = Math.Abs(tempPoints[args.Player.Index][0].Y - tempPoints[args.Player.Index][1].Y);
+                for (int y2 = height; y2 >= 0; y2--)
+                {
+
+                    for (int x2 = 0; x2 <= width; x2++)
+                    {
+
+                        switch (Main.tile[x + x2, y + y2].type)
+                        {
+
+                            case 117: Main.tile[x + x2, y + y2].type = 1; break;
+                            case 109: Main.tile[x + x2, y + y2].type = 2; break;
+                            case 110: Main.tile[x + x2, y + y2].type = 3; break;
+                            case 23: Main.tile[x + x2, y + y2].type = 2; break;
+                            case 24: Main.tile[x + x2, y + y2].type = 3; break;
+                            case 25: Main.tile[x + x2, y + y2].type = 1; break;
+                            case 26: changeTile(x + x2, y + y2, 252, 255); break;
+                            case 31: changeTile(x + x2, y + y2, 252, 255); break;
+                            case 32: changeTile(x + x2, y + y2, 252, 255); break;
+                            case 52: Main.tile[x + x2, y + y2].type = 115; break;
+                            case 112: Main.tile[x + x2, y + y2].type = 53; break;
+                            case 113: changeTile(x + x2, y + y2, 252, 255); break;
+                            case 116: Main.tile[x + x2, y + y2].type = 53; break;
+
+                        }
+
+                        if (Main.tile[x + x2, y + y2].wall == 3 || Main.tile[x + x2, y + y2].wall == 28)
+                            Main.tile[x + x2, y + y2].wall = 1;
+
+                    }
+
+                }
+                for (int y2 = height; y2 >= 0; y2--)
+                {
+
+                    for (int x2 = 0; x2 <= width; x2++)
+                    {
+
+                        updateTile(x + x2, y + y2);
+
+                    }
+
+                }
+                lastAreas[args.Player.Index] = tempPoints[args.Player.Index];
+                clearTempPoints((byte)args.Player.Index);
+
+                args.Player.SendMessage("Tiles changed!");
+
+            }
+            else
+            {
+                args.Player.SendMessage("Points not set up yet", Color.Red);
+            }
+
+        }
+
+        private void Test(CommandArgs args)
+        {
+
+            try
+            {
+                Main.tile[args.Player.TileX + 5, args.Player.TileY].wall = Convert.ToByte(args.Parameters[0]);
+                updateTile(args.Player.TileX + 5, args.Player.TileY);
+            }
+            catch (Exception) { args.Player.SendMessage("Invalid Number!", Color.Red); }
+
+        }
+
+        private void OnUpdate()
+        {
+
+            foreach(KeyValuePair<Point, TileData> entry in tilesToRevert)
+            {
+
+                Main.tile[entry.Key.X, entry.Key.Y].type = entry.Value.type;
+                Main.tile[entry.Key.X, entry.Key.Y].active = entry.Value.active;
+
+            }
+            tilesToRevert.Clear();
+
+        }
+
+        private void OnSendData(SendDataEventArgs e)
+        {
+
+            if (e.MsgID == PacketTypes.TileSendSection)
+            {
+
+                short width = (short)e.number;
+                int x = (int)e.number2;
+                int y = (int)e.number3;
+                foreach (Point thePoint in getTempOutline(tempPoints[e.remoteClient]))
+                {
+                    if (!tilesToRevert.Keys.Contains(new Point(thePoint.X, thePoint.Y)))
+                    {
+                        tilesToRevert.Add(new Point(thePoint.X, thePoint.Y), Main.tile[thePoint.X, thePoint.Y].Data);
+                        Main.tile[thePoint.X, thePoint.Y].active = true;
+                        Main.tile[thePoint.X, thePoint.Y].type = 70;
+                    }
+                }
+
+            }
+            
+        }
+
+        private void OnGetData(GetDataEventArgs e)
+        {
+
+            if ((e.MsgID == PacketTypes.Tile) || (e.MsgID == PacketTypes.TileKill))
+            {
+
+                if (awaitingPoint[e.Msg.whoAmI] != 0)
+                {
+
+                    List<Point> tempTempPoint = getTempOutline(tempPoints[e.Msg.whoAmI]);
+                    /*switch (tempPoints[e.Msg.whoAmI].Count())
+                    {
+
+                        case 1: updateTile(tempPoints[e.Msg.whoAmI][0].X, tempPoints[e.Msg.whoAmI][0].Y);
+
+                    }*/
+                    using (var data = new MemoryStream(e.Msg.readBuffer, e.Index, e.Length))
+                    {
+                        var reader = new BinaryReader(data);
+                        byte action = reader.ReadByte();
+                        int tilex = reader.ReadInt32();
+                        int tiley = reader.ReadInt32();
+                        if (awaitingPoint[e.Msg.whoAmI] <= -1)
+                        {
+
+                            tempPoints[e.Msg.whoAmI].Add(new Point(tilex, tiley));
+                            TShock.Players[e.Msg.whoAmI].SendMessage("Point #" + tempPoints[e.Msg.whoAmI].Count().ToString() + " set.");
+
+                        }
+                        else if (awaitingPoint[e.Msg.whoAmI] - 1 < tempPoints[e.Msg.whoAmI].Count())
+                        {
+
+                            try
+                            {
+                                tempPoints[e.Msg.whoAmI][awaitingPoint[e.Msg.whoAmI] - 1] = new Point(tilex, tiley);
+                                TShock.Players[e.Msg.whoAmI].SendMessage("Point #" + awaitingPoint[e.Msg.whoAmI].ToString() + " set.");
+                                awaitingPoint[e.Msg.whoAmI] = 0;
+                            }
+                            catch (Exception)
+                            {
+                                TShock.Players[e.Msg.whoAmI].SendMessage("There has been an error, please try entering in the /tile set command again.", Color.Red);
+                                awaitingPoint[e.Msg.whoAmI] = 0;
+                                NetMessage.SendTileSquare(e.Msg.whoAmI, tilex, tiley, 1);
+                            }
+
+                        }
+                        else if (awaitingPoint[e.Msg.whoAmI] - 1 == tempPoints[e.Msg.whoAmI].Count())
+                        {
+
+                            tempPoints[e.Msg.whoAmI].Add(new Point(tilex, tiley));
+                            TShock.Players[e.Msg.whoAmI].SendMessage("Point #" + awaitingPoint[e.Msg.whoAmI].ToString() + " set.");
+                            awaitingPoint[e.Msg.whoAmI] = 0;
+
+                        }
+                        else
+                        {
+
+                            TShock.Players[e.Msg.whoAmI].SendMessage("There has been an error, please try entering in the /tile set command again.", Color.Red);
+                            awaitingPoint[e.Msg.whoAmI] = 0;
+                            NetMessage.SendTileSquare(e.Msg.whoAmI, tilex, tiley, 1);
+
+                        }
+                        refreshTempTiles(e.Msg.whoAmI, tempTempPoint);
+
+                    }
+                    e.Handled = true;
+                }
+
+            }
+
         }
 
         private static void OnLeave(int ply)
@@ -197,96 +546,119 @@ namespace PluginTemplate
             copyH[ply] = 0;
             cut[ply] = false;
             brushStroke[ply] = 1.0;
-            lastArea1[ply] = Point.Zero;
-            lastArea2[ply] = Point.Zero;
+            lastAreas[ply] = new List<Point>();
+            tempPoints[ply] = new List<Point>();
+            awaitingPoint[ply] = 0;
 
         }
 
-        public static void Undo(CommandArgs args)
+        public static void TriangleOutline(CommandArgs args)
         {
 
-            if (undoPoint1[args.Player.Index] != Point.Zero)
+            if (args.Parameters.Count > 0)
+            {
+                if (tempPoints[args.Player.Index].Count() > 2)
+                {
+
+                    string theString = "";
+                    for (int i = 0; i < args.Parameters.Count; i++)
+                    {
+
+                        if (i + 1 != args.Parameters.Count)
+                        {
+                            theString += args.Parameters[i] + " ";
+                        }
+                        else
+                        {
+                            theString += args.Parameters[i];
+                        }
+
+                    }
+                    bool isWall = false;
+                    byte tileType = findTileType(theString);
+                    byte wallType = findWallType(theString);
+                    isWall = ((tileType == 255) && (wallType != 255));
+                    if ((tileType != 255) || (wallType != 255))
+                    {
+                        int trueX = tempPoints[args.Player.Index][0].X;
+                        int trueY = tempPoints[args.Player.Index][0].Y;
+                        int trueX2 = tempPoints[args.Player.Index][1].X;
+                        int trueY2 = tempPoints[args.Player.Index][1].Y;
+                        int trueX3 = tempPoints[args.Player.Index][2].X;
+                        int trueY3 = tempPoints[args.Player.Index][2].Y;
+                        if (!isWall)
+                        {
+                            drawLine(trueX, trueY, trueX2, trueY2, tileType, 255, brushStroke[args.Player.Index]);
+                            drawLine(trueX3, trueY3, trueX2, trueY2, tileType, 255, brushStroke[args.Player.Index]);
+                            drawLine(trueX, trueY, trueX3, trueY3, tileType, 255, brushStroke[args.Player.Index]);
+                        }
+                        else
+                        {
+                            drawLine(trueX, trueY, trueX2, trueY2, 255, wallType, brushStroke[args.Player.Index]);
+                            drawLine(trueX3, trueY3, trueX2, trueY2, 255, wallType, brushStroke[args.Player.Index]);
+                            drawLine(trueX, trueY, trueX3, trueY3, 255, wallType, brushStroke[args.Player.Index]);
+                        }
+                        lastAreas[args.Player.Index] = tempPoints[args.Player.Index];
+                        clearTempPoints((byte)args.Player.Index);
+
+                        args.Player.SendMessage("Tiles changed!");
+                    }
+                    else
+                    {
+
+                        args.Player.SendMessage("That is not a recognized tile type.", Color.Red);
+
+                    }
+                }
+                else
+                {
+                    args.Player.SendMessage("Points not set up yet", Color.Red);
+                }
+            }
+            else
             {
 
-                int width = Math.Abs(undoPoint1[args.Player.Index].X - undoPoint2[args.Player.Index].X);
-                int height = Math.Abs(undoPoint1[args.Player.Index].Y - undoPoint2[args.Player.Index].Y);
-                int X, Y;
-                for (int y = 0; y <= height; y++)
-                {
-
-                    for (int x = 0; x <= width; x++)
-                    {
-
-                        X = undoPoint1[args.Player.Index].X + x;
-                        Y = undoPoint1[args.Player.Index].Y + y;
-                        try
-                        {
-                            Main.tile[X, Y].active = (undoTiles[args.Player.Index])[X, Y].active;
-                            try
-                            {
-                                if (findTileByID((undoTiles[args.Player.Index])[X, Y].type) != 255)
-                                    Main.tile[X, Y].type = (undoTiles[args.Player.Index])[X, Y].type;
-                            }
-                            catch (NullReferenceException) { Main.tile[X, Y].active = false; }
-                            try { Main.tile[X, Y].wall = (undoTiles[args.Player.Index])[X, Y].wall; }
-                            catch (NullReferenceException) { Main.tile[X, Y].wall = 0; }
-                            try { Main.tile[X, Y].frameNumber = (undoTiles[args.Player.Index])[X, Y].frameNumber; }
-                            catch (NullReferenceException) { Main.tile[X, Y].frameNumber = 1; }
-                            try { Main.tile[X, Y].frameX = (undoTiles[args.Player.Index])[X, Y].frameX; }
-                            catch (NullReferenceException) { Main.tile[X, Y].frameX = 1; }
-                            try { Main.tile[X, Y].frameY = (undoTiles[args.Player.Index])[X, Y].frameY; }
-                            catch (NullReferenceException) { Main.tile[X, Y].frameY = 1; }
-                            Main.tile[X, Y].checkingLiquid = false;
-                            Main.tile[X, Y].lava = (undoTiles[args.Player.Index])[X, Y].lava;
-                            try { Main.tile[X, Y].liquid = (undoTiles[args.Player.Index])[X, Y].liquid; }
-                            catch (NullReferenceException) { Main.tile[X, Y].liquid = 0; }
-                            Main.tile[X, Y].skipLiquid = (undoTiles[args.Player.Index])[X, Y].skipLiquid;
-                            if ((Main.tile[X, Y].type == 53) || (Main.tile[X, Y].type == 253) || (Main.tile[X, Y].type == 254))
-                                WorldGen.SquareTileFrame(X, Y, false);
-                        }
-                        catch (Exception) { }
-
-                    }
-
-                }
-                for (int y = 0; y <= height; y++)
-                {
-
-                    for (int x = 0; x <= width; x++)
-                    {
-
-                        X = undoPoint1[args.Player.Index].X + x;
-                        Y = undoPoint1[args.Player.Index].Y + y;
-                        updateTile(X, Y);
-
-                    }
-
-                }
-                args.Player.SendMessage("Success!");
+                args.Player.SendMessage("Improper syntax! Proper syntax: /triangleoutline blocktype", Color.Red);
 
             }
 
         }
 
-        public static void LastArea(CommandArgs args)
+        public static void Triangle(CommandArgs args)
         {
 
-            if (lastArea1[args.Player.Index] != Point.Zero)
+
+
+        }
+
+        public static void Tiles(CommandArgs args)
+        {
+
+            if (args.Parameters.Count() > 0)
             {
 
-                if (lastArea2[args.Player.Index] != Point.Zero)
+                switch (args.Parameters[0].ToLower())
                 {
 
-                    args.Player.TempPoints[0] = lastArea1[args.Player.Index];
-                    args.Player.TempPoints[1] = lastArea2[args.Player.Index];
-                    args.Player.SendMessage("Both temp points reset.");
+                    case "set": if (args.Parameters.Count() > 1) switch (args.Parameters[1].ToLower())
+                            {
 
-                }
-                else
-                {
+                                case "all": awaitingPoint[args.Player.Index] = -1;
+                                args.Player.SendMessage("Awaiting multiple new tile points.");
+                                break;
+                                default: try
+                                {
 
-                    args.Player.TempPoints[0] = lastArea1[args.Player.Index];
-                    args.Player.SendMessage("Temp point 1 reset.", Color.Orange);
+                                    awaitingPoint[args.Player.Index] = Convert.ToInt32(args.Parameters[1]);
+                                    args.Player.SendMessage("Awaiting tile point #" + args.Parameters[1]);
+
+
+                                }
+                                catch (Exception) { args.Player.SendMessage("Please use an integer or the keyword \"all\".", Color.Red); }
+                                break;
+
+                            } break;
+                    case "clear": clearTempPoints((byte)args.Player.Index); args.Player.SendMessage("Tile Points successfully cleared."); break;
 
                 }
 
@@ -294,11 +666,38 @@ namespace PluginTemplate
             else
             {
 
-                args.Player.SendMessage("You haven't set any points in the past.", Color.Red);
+                args.Player.SendMessage("Improper Syntax.  Proper Syntax: /tile set all|(number), or /tile clear", Color.Red);
 
             }
-            lastArea1[args.Player.Index] = Point.Zero;
-            lastArea2[args.Player.Index] = Point.Zero;
+
+        }
+
+        public static void Undo(CommandArgs args)
+        {
+
+            
+
+        }
+
+        public static void LastArea(CommandArgs args)
+        {
+
+            if (lastAreas[args.Player.Index].Count() > 0)
+            {
+
+                List<Point> tempTempPoint = getTempOutline(tempPoints[args.Player.Index]);
+                tempPoints[args.Player.Index] = lastAreas[args.Player.Index];
+                refreshTempTiles(args.Player.Index, tempTempPoint);
+                args.Player.SendMessage("Tile points reset.");
+
+            }
+            else
+            {
+
+                args.Player.SendMessage("You haven't set any tile points in the past.", Color.Red);
+
+            }
+            lastAreas[args.Player.Index] = new List<Point>();
 
         }
         public static void BrushStroke(CommandArgs args)
@@ -331,7 +730,7 @@ namespace PluginTemplate
 
             if (args.Parameters.Count > 0)
             {
-                if (!args.Player.TempPoints.Any(p => p == Point.Zero))
+                if (tempPoints[args.Player.Index].Count() > 1)
                 {
 
                     string theString = "";
@@ -354,21 +753,21 @@ namespace PluginTemplate
                     isWall = ((tileType == 255) && (wallType != 255));
                     if ((tileType != 255) || (wallType != 255))
                     {
-                        int x = Math.Min(args.Player.TempPoints[0].X, args.Player.TempPoints[1].X);
-                        int y = Math.Min(args.Player.TempPoints[0].Y, args.Player.TempPoints[1].Y);
-                        int width = Math.Abs(args.Player.TempPoints[0].X - args.Player.TempPoints[1].X);
-                        int height = Math.Abs(args.Player.TempPoints[0].Y - args.Player.TempPoints[1].Y);
-                        int trueX = args.Player.TempPoints[0].X;
-                        int trueY = args.Player.TempPoints[0].Y;
-                        int trueX2 = args.Player.TempPoints[1].X;
-                        int trueY2 = args.Player.TempPoints[1].Y;
-                        if (x == trueX)
+                        int x = Math.Min(tempPoints[args.Player.Index][0].X, tempPoints[args.Player.Index][1].X);
+                        int y = Math.Min(tempPoints[args.Player.Index][0].Y, tempPoints[args.Player.Index][1].Y);
+                        int width = Math.Abs(tempPoints[args.Player.Index][0].X - tempPoints[args.Player.Index][1].X);
+                        int height = Math.Abs(tempPoints[args.Player.Index][0].Y - tempPoints[args.Player.Index][1].Y);
+                        int trueX = tempPoints[args.Player.Index][0].X;
+                        int trueY = tempPoints[args.Player.Index][0].Y;
+                        int trueX2 = tempPoints[args.Player.Index][1].X;
+                        int trueY2 = tempPoints[args.Player.Index][1].Y;
+                        /*if (x == trueX)
                         {
 
                             if (y == trueY)
                             {
 
-                                for (int y2 = 0; y2 <= height; y2++)
+                                for (int y2 = height; y2 >= 0; y2--)
                                 {
 
                                     for (int x2 = 0; x2 <= width; x2++)
@@ -396,7 +795,7 @@ namespace PluginTemplate
                             else
                             {
 
-                                for (int y2 = 0; y2 <= height; y2++)
+                                for (int y2 = height; y2 >= 0; y2--)
                                 {
 
                                     for (int x2 = 0; x2 <= width; x2++)
@@ -429,7 +828,7 @@ namespace PluginTemplate
                             if (y == trueY)
                             {
 
-                                for (int y2 = 0; y2 <= height; y2++)
+                                for (int y2 = height; y2 >= 0; y2--)
                                 {
 
                                     for (int x2 = 0; x2 <= width; x2++)
@@ -457,7 +856,7 @@ namespace PluginTemplate
                             else
                             {
 
-                                for (int y2 = 0; y2 <= height; y2++)
+                                for (int y2 = height; y2 >= 0; y2--)
                                 {
 
                                     for (int x2 = 0; x2 <= width; x2++)
@@ -484,7 +883,7 @@ namespace PluginTemplate
                             }
 
                         }
-                        for (int y2 = 0; y2 <= height; y2++)
+                        for (int y2 = height; y2 >= 0; y2--)
                         {
 
                             for (int x2 = 0; x2 <= width; x2++)
@@ -494,11 +893,18 @@ namespace PluginTemplate
 
                             }
 
+                        }*/
+                        if (!isWall)
+                        {
+                            drawLine(trueX, trueY, trueX2, trueY2, tileType, 255, brushStroke[args.Player.Index]);
                         }
-                        lastArea1[args.Player.Index] = args.Player.TempPoints[0];
-                        lastArea2[args.Player.Index] = args.Player.TempPoints[1];
-                        args.Player.TempPoints[0] = Point.Zero;
-                        args.Player.TempPoints[1] = Point.Zero;
+                        else
+                        {
+                            drawLine(trueX, trueY, trueX2, trueY2, 255, wallType, brushStroke[args.Player.Index]);
+                        }
+                        lastAreas[args.Player.Index] = tempPoints[args.Player.Index];
+                        clearTempPoints((byte)args.Player.Index);
+                        
                         args.Player.SendMessage("Tiles changed!");
                     }
                     else
@@ -528,7 +934,7 @@ namespace PluginTemplate
             if (args.Parameters.Count > 1)
             {
 
-                if (!args.Player.TempPoints.Any(p => p == Point.Zero))
+                if (tempPoints[args.Player.Index].Count() > 1)
                 {
 
                     string theString = "";
@@ -557,11 +963,11 @@ namespace PluginTemplate
                     {
                         if ((tileType2 != 255) || (wallType2 != 255))
                         {
-                            int x = Math.Min(args.Player.TempPoints[0].X, args.Player.TempPoints[1].X);
-                            int y = Math.Min(args.Player.TempPoints[0].Y, args.Player.TempPoints[1].Y);
-                            int width = Math.Abs(args.Player.TempPoints[0].X - args.Player.TempPoints[1].X);
-                            int height = Math.Abs(args.Player.TempPoints[0].Y - args.Player.TempPoints[1].Y);
-                            for (int y2 = 0; y2 <= height; y2++)
+                            int x = Math.Min(tempPoints[args.Player.Index][0].X, tempPoints[args.Player.Index][1].X);
+                            int y = Math.Min(tempPoints[args.Player.Index][0].Y, tempPoints[args.Player.Index][1].Y);
+                            int width = Math.Abs(tempPoints[args.Player.Index][0].X - tempPoints[args.Player.Index][1].X);
+                            int height = Math.Abs(tempPoints[args.Player.Index][0].Y - tempPoints[args.Player.Index][1].Y);
+                            for (int y2 = height; y2 >= 0; y2--)
                             {
 
                                 for (int x2 = 0; x2 <= width; x2++)
@@ -569,7 +975,7 @@ namespace PluginTemplate
 
                                     if (!isWall)
                                     {
-                                        if (((Main.tile[x + x2, y + y2].type == tileType) && (Main.tile[x + x2, y + y2].active)) || ((tileType == 253) && (Main.tile[x + x2, y + y2].lava == false) && (Main.tile[x + x2, y + y2].liquid > 0)) || ((tileType == 254) && (Main.tile[x + x2, y + y2].lava == true) && (Main.tile[x + x2, y + y2].liquid > 0)))
+                                        if (((Main.tile[x + x2, y + y2].type == tileType) && (Main.tile[x + x2, y + y2].active)) || ((tileType == 253) && (Main.tile[x + x2, y + y2].lava == false) && (Main.tile[x + x2, y + y2].liquid > 0)) || ((tileType == 254) && (Main.tile[x + x2, y + y2].lava == true) && (Main.tile[x + x2, y + y2].liquid > 0)) || ((tileType == 252) && (!Main.tile[x + x2, y + y2].active)) || ((tileType == 251) && (Main.tile[x + x2, y + y2].wall == 0)) || ((tileType == 250) && (!Main.tile[x + x2, y + y2].active) && (Main.tile[x + x2, y + y2].wall == 0)))
                                         {
                                             if (!isWall2)
                                             {
@@ -601,7 +1007,7 @@ namespace PluginTemplate
                                 }
 
                             }
-                            for (int y2 = 0; y2 <= height; y2++)
+                            for (int y2 = height; y2 >= 0; y2--)
                             {
 
                                 for (int x2 = 0; x2 <= width; x2++)
@@ -612,10 +1018,9 @@ namespace PluginTemplate
                                 }
 
                             }
-                            lastArea1[args.Player.Index] = args.Player.TempPoints[0];
-                            lastArea2[args.Player.Index] = args.Player.TempPoints[1];
-                            args.Player.TempPoints[0] = Point.Zero;
-                            args.Player.TempPoints[1] = Point.Zero;
+                            lastAreas[args.Player.Index] = tempPoints[args.Player.Index];
+                            clearTempPoints((byte)args.Player.Index);
+                            
                             args.Player.SendMessage("Tiles changed!");
                         }
                         else
@@ -653,7 +1058,7 @@ namespace PluginTemplate
 
             if (args.Parameters.Count > 0)
             {
-                if (!args.Player.TempPoints.Any(p => p == Point.Zero))
+                if (tempPoints[args.Player.Index].Count() > 1)
                 {
                     
                     string theString = "";
@@ -676,11 +1081,11 @@ namespace PluginTemplate
                     isWall = ((tileType == 255) && (wallType != 255));
                     if ((tileType != 255) || (wallType != 255))
                     {
-                        int x = Math.Min(args.Player.TempPoints[0].X, args.Player.TempPoints[1].X);
-                        int y = Math.Min(args.Player.TempPoints[0].Y, args.Player.TempPoints[1].Y);
-                        int width = Math.Abs(args.Player.TempPoints[0].X - args.Player.TempPoints[1].X);
-                        int height = Math.Abs(args.Player.TempPoints[0].Y - args.Player.TempPoints[1].Y);
-                        for (int y2 = 0; y2 <= height; y2++)
+                        int x = Math.Min(tempPoints[args.Player.Index][0].X, tempPoints[args.Player.Index][1].X);
+                        int y = Math.Min(tempPoints[args.Player.Index][0].Y, tempPoints[args.Player.Index][1].Y);
+                        int width = Math.Abs(tempPoints[args.Player.Index][0].X - tempPoints[args.Player.Index][1].X);
+                        int height = Math.Abs(tempPoints[args.Player.Index][0].Y - tempPoints[args.Player.Index][1].Y);
+                        for (int y2 = height; y2 >= 0; y2--)
                         {
 
                             for (int x2 = 0; x2 <= width; x2++)
@@ -703,7 +1108,7 @@ namespace PluginTemplate
                             }
 
                         }
-                        for (int y2 = 0; y2 <= height; y2++)
+                        for (int y2 = height; y2 >= 0; y2--)
                         {
 
                             for (int x2 = 0; x2 <= width; x2++)
@@ -714,10 +1119,9 @@ namespace PluginTemplate
                             }
 
                         }
-                        lastArea1[args.Player.Index] = args.Player.TempPoints[0];
-                        lastArea2[args.Player.Index] = args.Player.TempPoints[1];
-                        args.Player.TempPoints[0] = Point.Zero;
-                        args.Player.TempPoints[1] = Point.Zero;
+                        lastAreas[args.Player.Index] = tempPoints[args.Player.Index];
+                        clearTempPoints((byte)args.Player.Index);
+                        
                         args.Player.SendMessage("Tiles changed!");
                     }
                     else
@@ -746,7 +1150,7 @@ namespace PluginTemplate
 
             if (args.Parameters.Count > 1)
             {
-                if (!args.Player.TempPoints.Any(p => p == Point.Zero))
+                if (tempPoints[args.Player.Index].Count() > 1)
                 {
 
                     string theString = "";
@@ -769,11 +1173,11 @@ namespace PluginTemplate
                     isWall = ((tileType == 255) && (wallType != 255));
                     if ((tileType != 255) || (wallType != 255))
                     {
-                        int x = Math.Min(args.Player.TempPoints[0].X, args.Player.TempPoints[1].X);
-                        int y = Math.Min(args.Player.TempPoints[0].Y, args.Player.TempPoints[1].Y);
-                        int width = Math.Abs(args.Player.TempPoints[0].X - args.Player.TempPoints[1].X);
-                        int height = Math.Abs(args.Player.TempPoints[0].Y - args.Player.TempPoints[1].Y);
-                        for (int y2 = 0; y2 <= height; y2++)
+                        int x = Math.Min(tempPoints[args.Player.Index][0].X, tempPoints[args.Player.Index][1].X);
+                        int y = Math.Min(tempPoints[args.Player.Index][0].Y, tempPoints[args.Player.Index][1].Y);
+                        int width = Math.Abs(tempPoints[args.Player.Index][0].X - tempPoints[args.Player.Index][1].X);
+                        int height = Math.Abs(tempPoints[args.Player.Index][0].Y - tempPoints[args.Player.Index][1].Y);
+                        for (int y2 = height; y2 >= 0; y2--)
                         {
 
                             for (int x2 = 0; x2 <= width; x2++)
@@ -845,7 +1249,7 @@ namespace PluginTemplate
                             }
 
                         }
-                        for (int y2 = 0; y2 <= height; y2++)
+                        for (int y2 = height; y2 >= 0; y2--)
                         {
 
                             for (int x2 = 0; x2 <= width; x2++)
@@ -856,10 +1260,9 @@ namespace PluginTemplate
                             }
 
                         }
-                        lastArea1[args.Player.Index] = args.Player.TempPoints[0];
-                        lastArea2[args.Player.Index] = args.Player.TempPoints[1];
-                        args.Player.TempPoints[0] = Point.Zero;
-                        args.Player.TempPoints[1] = Point.Zero;
+                        lastAreas[args.Player.Index] = tempPoints[args.Player.Index];
+                        clearTempPoints((byte)args.Player.Index);
+                        
                         args.Player.SendMessage("Tiles changed!");
                     }
                     else
@@ -888,7 +1291,7 @@ namespace PluginTemplate
 
             if (args.Parameters.Count > 1)
             {
-                if (!args.Player.TempPoints.Any(p => p == Point.Zero))
+                if (tempPoints[args.Player.Index].Count() > 1)
                 {
 
                     string theString = "";
@@ -911,11 +1314,11 @@ namespace PluginTemplate
                     isWall = ((tileType == 255) && (wallType != 255));
                     if ((tileType != 255) || (wallType != 255))
                     {
-                        int x = Math.Min(args.Player.TempPoints[0].X, args.Player.TempPoints[1].X);
-                        int y = Math.Min(args.Player.TempPoints[0].Y, args.Player.TempPoints[1].Y);
-                        int width = Math.Abs(args.Player.TempPoints[0].X - args.Player.TempPoints[1].X);
-                        int height = Math.Abs(args.Player.TempPoints[0].Y - args.Player.TempPoints[1].Y);
-                        for (int y2 = 0; y2 <= height; y2++)
+                        int x = Math.Min(tempPoints[args.Player.Index][0].X, tempPoints[args.Player.Index][1].X);
+                        int y = Math.Min(tempPoints[args.Player.Index][0].Y, tempPoints[args.Player.Index][1].Y);
+                        int width = Math.Abs(tempPoints[args.Player.Index][0].X - tempPoints[args.Player.Index][1].X);
+                        int height = Math.Abs(tempPoints[args.Player.Index][0].Y - tempPoints[args.Player.Index][1].Y);
+                        for (int y2 = height; y2 >= 0; y2--)
                         {
 
                             for (int x2 = 0; x2 <= width; x2++)
@@ -987,7 +1390,7 @@ namespace PluginTemplate
                             }
 
                         }
-                        for (int y2 = 0; y2 <= height; y2++)
+                        for (int y2 = height; y2 >= 0; y2--)
                         {
 
                             for (int x2 = 0; x2 <= width; x2++)
@@ -998,10 +1401,9 @@ namespace PluginTemplate
                             }
 
                         }
-                        lastArea1[args.Player.Index] = args.Player.TempPoints[0];
-                        lastArea2[args.Player.Index] = args.Player.TempPoints[1];
-                        args.Player.TempPoints[0] = Point.Zero;
-                        args.Player.TempPoints[1] = Point.Zero;
+                        lastAreas[args.Player.Index] = tempPoints[args.Player.Index];
+                        clearTempPoints((byte)args.Player.Index);
+                        
                         args.Player.SendMessage("Tiles changed!");
                     }
                     else
@@ -1030,7 +1432,7 @@ namespace PluginTemplate
 
             if (args.Parameters.Count > 0)
             {
-                if (!args.Player.TempPoints.Any(p => p == Point.Zero))
+                if (tempPoints[args.Player.Index].Count() > 1)
                 {
 
                     string theString = "";
@@ -1053,11 +1455,11 @@ namespace PluginTemplate
                     isWall = ((tileType == 255) && (wallType != 255));
                     if ((tileType != 255) || (wallType != 255))
                     {
-                        int x = Math.Min(args.Player.TempPoints[0].X, args.Player.TempPoints[1].X);
-                        int y = Math.Min(args.Player.TempPoints[0].Y, args.Player.TempPoints[1].Y);
-                        int width = Math.Abs(args.Player.TempPoints[0].X - args.Player.TempPoints[1].X);
-                        int height = Math.Abs(args.Player.TempPoints[0].Y - args.Player.TempPoints[1].Y);
-                        for (int y2 = 0; y2 <= height; y2++)
+                        int x = Math.Min(tempPoints[args.Player.Index][0].X, tempPoints[args.Player.Index][1].X);
+                        int y = Math.Min(tempPoints[args.Player.Index][0].Y, tempPoints[args.Player.Index][1].Y);
+                        int width = Math.Abs(tempPoints[args.Player.Index][0].X - tempPoints[args.Player.Index][1].X);
+                        int height = Math.Abs(tempPoints[args.Player.Index][0].Y - tempPoints[args.Player.Index][1].Y);
+                        for (int y2 = height; y2 >= 0; y2--)
                         {
 
                             for (int x2 = 0; x2 <= width; x2++)
@@ -1079,7 +1481,7 @@ namespace PluginTemplate
                             }
 
                         }
-                        for (int y2 = 0; y2 <= height; y2++)
+                        for (int y2 = height; y2 >= 0; y2--)
                         {
 
                             for (int x2 = 0; x2 <= width; x2++)
@@ -1090,10 +1492,9 @@ namespace PluginTemplate
                             }
 
                         }
-                        lastArea1[args.Player.Index] = args.Player.TempPoints[0];
-                        lastArea2[args.Player.Index] = args.Player.TempPoints[1];
-                        args.Player.TempPoints[0] = Point.Zero;
-                        args.Player.TempPoints[1] = Point.Zero;
+                        lastAreas[args.Player.Index] = tempPoints[args.Player.Index];
+                        clearTempPoints((byte)args.Player.Index);
+                        
                         args.Player.SendMessage("Tiles changed!");
                     }
                     else
@@ -1123,12 +1524,12 @@ namespace PluginTemplate
             if ((copyW[args.Player.Index] != 0) || (copyH[args.Player.Index] != 0))
             {
 
-                if (args.Player.TempPoints[0] != Point.Zero)
+                if (tempPoints[args.Player.Index].Count() > 0)
                 {
 
                     int X, Y;
-                    int x = args.Player.TempPoints[0].X;
-                    int y = args.Player.TempPoints[0].Y;
+                    int x = tempPoints[args.Player.Index][0].X;
+                    int y = tempPoints[args.Player.Index][0].Y;
                     int width = copyW[args.Player.Index];
                     int height = copyH[args.Player.Index];
                     int i = args.Player.Index;
@@ -1139,7 +1540,7 @@ namespace PluginTemplate
                         return;
 
                     }
-                    for (int y2 = 0; y2 <= height; y2++)
+                    for (int y2 = height; y2 >= 0; y2--)
                     {
 
                         for (int x2 = 0; x2 <= width; x2++)
@@ -1179,7 +1580,7 @@ namespace PluginTemplate
                         }
 
                     }
-                    for (int y2 = 0; y2 <= height; y2++)
+                    for (int y2 = height; y2 >= 0; y2--)
                     {
 
                         for (int x2 = 0; x2 <= width; x2++)
@@ -1197,7 +1598,7 @@ namespace PluginTemplate
                         }
 
                     }
-                    for (int y2 = 0; y2 <= height; y2++)
+                    for (int y2 = height; y2 >= 0; y2--)
                     {
 
                         for (int x2 = 0; x2 <= width; x2++)
@@ -1226,7 +1627,7 @@ namespace PluginTemplate
                         }
 
                     }
-                    for (int y2 = 0; y2 <= height; y2++)
+                    for (int y2 = height; y2 >= 0; y2--)
                     {
 
                         for (int x2 = 0; x2 <= width; x2++)
@@ -1251,7 +1652,7 @@ namespace PluginTemplate
 
                         x = copyX[args.Player.Index];
                         y = copyY[args.Player.Index];
-                        for (int y2 = 0; y2 <= height; y2++)
+                        for (int y2 = height; y2 >= 0; y2--)
                         {
 
                             for (int x2 = 0; x2 <= width; x2++)
@@ -1271,7 +1672,7 @@ namespace PluginTemplate
                             }
 
                         }
-                        for (int y2 = 0; y2 <= height; y2++)
+                        for (int y2 = height; y2 >= 0; y2--)
                         {
 
                             for (int x2 = 0; x2 <= width; x2++)
@@ -1289,10 +1690,9 @@ namespace PluginTemplate
                         copyH[args.Player.Index] = 0;
 
                     }
-                    lastArea1[args.Player.Index] = args.Player.TempPoints[0];
-                    lastArea2[args.Player.Index] = args.Player.TempPoints[1];
-                    args.Player.TempPoints[0] = Point.Zero;
-                    args.Player.TempPoints[1] = Point.Zero;
+                    lastAreas[args.Player.Index] = tempPoints[args.Player.Index];
+                    clearTempPoints((byte)args.Player.Index);
+                    
                     args.Player.SendMessage("You have pasted from the clipboard.");
                 }
                 else
@@ -1333,17 +1733,16 @@ namespace PluginTemplate
 
             }
             cut[args.Player.Index] = false;
-            if (!args.Player.TempPoints.Any(p => p == Point.Zero))
+            if (tempPoints[args.Player.Index].Count() > 1)
             {
 
-                copyX[args.Player.Index] = Math.Min(args.Player.TempPoints[0].X, args.Player.TempPoints[1].X);
-                copyY[args.Player.Index] = Math.Min(args.Player.TempPoints[0].Y, args.Player.TempPoints[1].Y);
-                copyW[args.Player.Index] = Math.Abs(args.Player.TempPoints[0].X - args.Player.TempPoints[1].X);
-                copyH[args.Player.Index] = Math.Abs(args.Player.TempPoints[0].Y - args.Player.TempPoints[1].Y);
-                lastArea1[args.Player.Index] = args.Player.TempPoints[0];
-                lastArea2[args.Player.Index] = args.Player.TempPoints[1];
-                args.Player.TempPoints[0] = Point.Zero;
-                args.Player.TempPoints[1] = Point.Zero;
+                copyX[args.Player.Index] = Math.Min(tempPoints[args.Player.Index][0].X, tempPoints[args.Player.Index][1].X);
+                copyY[args.Player.Index] = Math.Min(tempPoints[args.Player.Index][0].Y, tempPoints[args.Player.Index][1].Y);
+                copyW[args.Player.Index] = Math.Abs(tempPoints[args.Player.Index][0].X - tempPoints[args.Player.Index][1].X);
+                copyH[args.Player.Index] = Math.Abs(tempPoints[args.Player.Index][0].Y - tempPoints[args.Player.Index][1].Y);
+                lastAreas[args.Player.Index] = tempPoints[args.Player.Index];
+                clearTempPoints((byte)args.Player.Index);
+                
                 args.Player.SendMessage("You have successfully copied to the clipboard.");
             }
             else
@@ -1377,17 +1776,16 @@ namespace PluginTemplate
 
             }
             cut[args.Player.Index] = true;
-            if (!args.Player.TempPoints.Any(p => p == Point.Zero))
+            if (tempPoints[args.Player.Index].Count() > 1)
             {
 
-                copyX[args.Player.Index] = Math.Min(args.Player.TempPoints[0].X, args.Player.TempPoints[1].X);
-                copyY[args.Player.Index] = Math.Min(args.Player.TempPoints[0].Y, args.Player.TempPoints[1].Y);
-                copyW[args.Player.Index] = Math.Abs(args.Player.TempPoints[0].X - args.Player.TempPoints[1].X);
-                copyH[args.Player.Index] = Math.Abs(args.Player.TempPoints[0].Y - args.Player.TempPoints[1].Y);
-                lastArea1[args.Player.Index] = args.Player.TempPoints[0];
-                lastArea2[args.Player.Index] = args.Player.TempPoints[1];
-                args.Player.TempPoints[0] = Point.Zero;
-                args.Player.TempPoints[1] = Point.Zero;
+                copyX[args.Player.Index] = Math.Min(tempPoints[args.Player.Index][0].X, tempPoints[args.Player.Index][1].X);
+                copyY[args.Player.Index] = Math.Min(tempPoints[args.Player.Index][0].Y, tempPoints[args.Player.Index][1].Y);
+                copyW[args.Player.Index] = Math.Abs(tempPoints[args.Player.Index][0].X - tempPoints[args.Player.Index][1].X);
+                copyH[args.Player.Index] = Math.Abs(tempPoints[args.Player.Index][0].Y - tempPoints[args.Player.Index][1].Y);
+                lastAreas[args.Player.Index] = tempPoints[args.Player.Index];
+                clearTempPoints((byte)args.Player.Index);
+                
                 args.Player.SendMessage("You have successfully cut to the clipboard.");
             }
             else
@@ -1402,16 +1800,16 @@ namespace PluginTemplate
 
             if (args.Parameters.Count >= 1)
             {
-                if (!args.Player.TempPoints.Any(p => p == Point.Zero))
+                if (tempPoints[args.Player.Index].Count() > 1)
                 {
 
-                    int x = Math.Min(args.Player.TempPoints[0].X, args.Player.TempPoints[1].X);
-                    int y = Math.Min(args.Player.TempPoints[0].Y, args.Player.TempPoints[1].Y);
-                    int width = Math.Abs(args.Player.TempPoints[0].X - args.Player.TempPoints[1].X);
-                    int height = Math.Abs(args.Player.TempPoints[0].Y - args.Player.TempPoints[1].Y);
+                    int x = Math.Min(tempPoints[args.Player.Index][0].X, tempPoints[args.Player.Index][1].X);
+                    int y = Math.Min(tempPoints[args.Player.Index][0].Y, tempPoints[args.Player.Index][1].Y);
+                    int width = Math.Abs(tempPoints[args.Player.Index][0].X - tempPoints[args.Player.Index][1].X);
+                    int height = Math.Abs(tempPoints[args.Player.Index][0].Y - tempPoints[args.Player.Index][1].Y);
                     switch (args.Parameters[0].ToLower())
                     {
-                        case "all": for (int y2 = 0; y2 <= height; y2++)
+                        case "all": for (int y2 = height; y2 >= 0; y2--)
                             {
 
                                 for (int x2 = 0; x2 <= width; x2++)
@@ -1425,7 +1823,7 @@ namespace PluginTemplate
                                 }
 
                             } break;
-                        case "back": for (int y2 = 0; y2 <= height; y2++)
+                        case "back": for (int y2 = height; y2 >= 0; y2--)
                             {
 
                                 for (int x2 = 0; x2 <= width; x2++)
@@ -1436,7 +1834,7 @@ namespace PluginTemplate
                                 }
 
                             } break;
-                        case "front": for (int y2 = 0; y2 <= height; y2++)
+                        case "front": for (int y2 = height; y2 >= 0; y2--)
                             {
 
                                 for (int x2 = 0; x2 <= width; x2++)
@@ -1451,7 +1849,7 @@ namespace PluginTemplate
                             } break;
                         default: args.Player.SendMessage("Improper Syntax.  Proper Syntax: /cleararea [all|back|front]"); return;
                     }
-                    for (int y2 = 0; y2 <= height; y2++)
+                    for (int y2 = height; y2 >= 0; y2--)
                     {
 
                         for (int x2 = 0; x2 <= width; x2++)
@@ -1462,10 +1860,9 @@ namespace PluginTemplate
                         }
 
                     }
-                    lastArea1[args.Player.Index] = args.Player.TempPoints[0];
-                    lastArea2[args.Player.Index] = args.Player.TempPoints[1];
-                    args.Player.TempPoints[0] = Point.Zero;
-                    args.Player.TempPoints[1] = Point.Zero;
+                    lastAreas[args.Player.Index] = tempPoints[args.Player.Index];
+                    clearTempPoints((byte)args.Player.Index);
+                    
                     args.Player.SendMessage("Tiles cleared!");
                 }
                 else
@@ -1476,14 +1873,14 @@ namespace PluginTemplate
             else
             {
 
-                if (!args.Player.TempPoints.Any(p => p == Point.Zero))
+                if (tempPoints[args.Player.Index].Count() > 1)
                 {
 
-                    int x = Math.Min(args.Player.TempPoints[0].X, args.Player.TempPoints[1].X);
-                    int y = Math.Min(args.Player.TempPoints[0].Y, args.Player.TempPoints[1].Y);
-                    int width = Math.Abs(args.Player.TempPoints[0].X - args.Player.TempPoints[1].X);
-                    int height = Math.Abs(args.Player.TempPoints[0].Y - args.Player.TempPoints[1].Y);
-                    for (int y2 = 0; y2 <= height; y2++)
+                    int x = Math.Min(tempPoints[args.Player.Index][0].X, tempPoints[args.Player.Index][1].X);
+                    int y = Math.Min(tempPoints[args.Player.Index][0].Y, tempPoints[args.Player.Index][1].Y);
+                    int width = Math.Abs(tempPoints[args.Player.Index][0].X - tempPoints[args.Player.Index][1].X);
+                    int height = Math.Abs(tempPoints[args.Player.Index][0].Y - tempPoints[args.Player.Index][1].Y);
+                    for (int y2 = height; y2 >= 0; y2--)
                     {
 
                         for (int x2 = 0; x2 <= width; x2++)
@@ -1497,7 +1894,7 @@ namespace PluginTemplate
                         }
 
                     }
-                    for (int y2 = 0; y2 <= height; y2++)
+                    for (int y2 = height; y2 >= 0; y2--)
                     {
 
                         for (int x2 = 0; x2 <= width; x2++)
@@ -1508,10 +1905,9 @@ namespace PluginTemplate
                         }
 
                     }
-                    lastArea1[args.Player.Index] = args.Player.TempPoints[0];
-                    lastArea2[args.Player.Index] = args.Player.TempPoints[1];
-                    args.Player.TempPoints[0] = Point.Zero;
-                    args.Player.TempPoints[1] = Point.Zero;
+                    lastAreas[args.Player.Index] = tempPoints[args.Player.Index];
+                    clearTempPoints((byte)args.Player.Index);
+                    
                     args.Player.SendMessage("Tiles cleared!");
                 }
                 else
@@ -1527,7 +1923,7 @@ namespace PluginTemplate
             
             if (args.Parameters.Count > 0)
             {
-                if (!args.Player.TempPoints.Any(p => p == Point.Zero))
+                if (tempPoints[args.Player.Index].Count() > 1)
                 {
                     string theString = "";
                     for (int i = 0; i < args.Parameters.Count; i++)
@@ -1549,16 +1945,11 @@ namespace PluginTemplate
                     isWall = ((tileType == 255) && (wallType != 255));
                     if ((tileType != 255) || (wallType != 255))
                     {
-                        int x = Math.Min(args.Player.TempPoints[0].X, args.Player.TempPoints[1].X);
-                        int y = Math.Min(args.Player.TempPoints[0].Y, args.Player.TempPoints[1].Y);
-                        int width = Math.Abs(args.Player.TempPoints[0].X - args.Player.TempPoints[1].X);
-                        int height = Math.Abs(args.Player.TempPoints[0].Y - args.Player.TempPoints[1].Y);
-                        undoTiles[args.Player.Index] = Main.tile;
-                        undoPoint1[args.Player.Index].X = x;
-                        undoPoint1[args.Player.Index].Y = y;
-                        undoPoint2[args.Player.Index].X = x + width;
-                        undoPoint2[args.Player.Index].Y = y + height;
-                        for (int y2 = 0; y2 <= height; y2++)
+                        int x = Math.Min(tempPoints[args.Player.Index][0].X, tempPoints[args.Player.Index][1].X);
+                        int y = Math.Min(tempPoints[args.Player.Index][0].Y, tempPoints[args.Player.Index][1].Y);
+                        int width = Math.Abs(tempPoints[args.Player.Index][0].X - tempPoints[args.Player.Index][1].X);
+                        int height = Math.Abs(tempPoints[args.Player.Index][0].Y - tempPoints[args.Player.Index][1].Y);
+                        for (int y2 = height; y2 >= 0; y2--)
                         {
 
                             for (int x2 = 0; x2 <= width; x2++)
@@ -1576,7 +1967,7 @@ namespace PluginTemplate
                             }
 
                         }
-                        for (int y2 = 0; y2 <= height; y2++)
+                        for (int y2 = height; y2 >= 0; y2--)
                         {
 
                             for (int x2 = 0; x2 <= width; x2++)
@@ -1587,10 +1978,9 @@ namespace PluginTemplate
                             }
 
                         }
-                        lastArea1[args.Player.Index] = args.Player.TempPoints[0];
-                        lastArea2[args.Player.Index] = args.Player.TempPoints[1];
-                        args.Player.TempPoints[0] = Point.Zero;
-                        args.Player.TempPoints[1] = Point.Zero;
+                        lastAreas[args.Player.Index] = tempPoints[args.Player.Index];
+                        clearTempPoints((byte)args.Player.Index);
+                        
                         args.Player.SendMessage("Tiles changed!"); return;
                     }
                     else
@@ -1618,7 +2008,7 @@ namespace PluginTemplate
 
             if (args.Parameters.Count > 0)
             {
-                if (!args.Player.TempPoints.Any(p => p == Point.Zero))
+                if (tempPoints[args.Player.Index].Count() > 1)
                 {
                     string theString = "";
                     for (int i = 0; i < args.Parameters.Count; i++)
@@ -1640,11 +2030,11 @@ namespace PluginTemplate
                     isWall = ((tileType == 255) && (wallType != 255));
                     if ((tileType != 255) || (wallType != 255))
                     {
-                        int x = Math.Min(args.Player.TempPoints[0].X, args.Player.TempPoints[1].X);
-                        int y = Math.Min(args.Player.TempPoints[0].Y, args.Player.TempPoints[1].Y);
-                        int width = Math.Abs(args.Player.TempPoints[0].X - args.Player.TempPoints[1].X);
-                        int height = Math.Abs(args.Player.TempPoints[0].Y - args.Player.TempPoints[1].Y);
-                        for (int y2 = -(int)(brushStroke[args.Player.Index] / 2); y2 <= height + (int)(brushStroke[args.Player.Index] / 2); y2++)
+                        int x = Math.Min(tempPoints[args.Player.Index][0].X, tempPoints[args.Player.Index][1].X);
+                        int y = Math.Min(tempPoints[args.Player.Index][0].Y, tempPoints[args.Player.Index][1].Y);
+                        int width = Math.Abs(tempPoints[args.Player.Index][0].X - tempPoints[args.Player.Index][1].X);
+                        int height = Math.Abs(tempPoints[args.Player.Index][0].Y - tempPoints[args.Player.Index][1].Y);
+                        for (int y2 = height + (int)(brushStroke[args.Player.Index] / 2); y2 >= -(int)(brushStroke[args.Player.Index] / 2); y2--)
                         {
 
                             for (int x2 = -(int)(brushStroke[args.Player.Index] / 2); x2 <= width + (int)(brushStroke[args.Player.Index] / 2); x2++)
@@ -1678,10 +2068,9 @@ namespace PluginTemplate
                             }
 
                         }
-                        lastArea1[args.Player.Index] = args.Player.TempPoints[0];
-                        lastArea2[args.Player.Index] = args.Player.TempPoints[1];
-                        args.Player.TempPoints[0] = Point.Zero;
-                        args.Player.TempPoints[1] = Point.Zero;
+                        lastAreas[args.Player.Index] = tempPoints[args.Player.Index];
+                        clearTempPoints((byte)args.Player.Index);
+                        
                         args.Player.SendMessage("Tiles changed!");
                     }
                     else
@@ -1709,7 +2098,7 @@ namespace PluginTemplate
 
             if (args.Parameters.Count > 1)
             {
-                if (args.Player.TempPoints[0] != Point.Zero)
+                if (tempPoints[args.Player.Index].Count() > 0)
                 {
                     int radius;
                     try { radius = Convert.ToInt32(args.Parameters[0]); }
@@ -1734,9 +2123,9 @@ namespace PluginTemplate
                     isWall = ((tileType == 255) && (wallType != 255));
                     if ((tileType != 255) || (wallType != 255))
                     {
-                        int x = args.Player.TempPoints[0].X;
-                        int y = args.Player.TempPoints[0].Y;
-                        for (int y2 = -radius; y2 <= radius; y2++)
+                        int x = tempPoints[args.Player.Index][0].X;
+                        int y = tempPoints[args.Player.Index][0].Y;
+                        for (int y2 = radius; y2 >= -radius; y2--)
                         {
 
                             for (int x2 = -radius; x2 <= radius; x2++)
@@ -1770,10 +2159,9 @@ namespace PluginTemplate
                             }
 
                         }
-                        lastArea1[args.Player.Index] = args.Player.TempPoints[0];
-                        lastArea2[args.Player.Index] = args.Player.TempPoints[1];
-                        args.Player.TempPoints[0] = Point.Zero;
-                        args.Player.TempPoints[1] = Point.Zero;
+                        lastAreas[args.Player.Index] = tempPoints[args.Player.Index];
+                        clearTempPoints((byte)args.Player.Index);
+                        
                         args.Player.SendMessage("Tiles changed!");
                     }
                     else
@@ -1802,7 +2190,7 @@ namespace PluginTemplate
 
             if (args.Parameters.Count > 1)
             {
-                if (args.Player.TempPoints[0] != Point.Zero)
+                if (tempPoints[args.Player.Index].Count() > 0)
                 {
                     int radius;
                     try { radius = Convert.ToInt32(args.Parameters[0]); }
@@ -1827,9 +2215,9 @@ namespace PluginTemplate
                     isWall = ((tileType == 255) && (wallType != 255));
                     if ((tileType != 255) || (wallType != 255))
                     {
-                        int x = args.Player.TempPoints[0].X;
-                        int y = args.Player.TempPoints[0].Y;
-                        for (int y2 = -radius - (int)(brushStroke[args.Player.Index] / 2); y2 <= radius + (int)(brushStroke[args.Player.Index] / 2); y2++)
+                        int x = tempPoints[args.Player.Index][0].X;
+                        int y = tempPoints[args.Player.Index][0].Y;
+                        for (int y2 = radius + (int)(brushStroke[args.Player.Index] / 2); y2 >= -radius - (int)(brushStroke[args.Player.Index] / 2); y2--)
                         {
 
                             for (int x2 = -radius - (int)(brushStroke[args.Player.Index] / 2); x2 <= radius + (int)(brushStroke[args.Player.Index] / 2); x2++)
@@ -1863,10 +2251,9 @@ namespace PluginTemplate
                             }
 
                         }
-                        lastArea1[args.Player.Index] = args.Player.TempPoints[0];
-                        lastArea2[args.Player.Index] = args.Player.TempPoints[1];
-                        args.Player.TempPoints[0] = Point.Zero;
-                        args.Player.TempPoints[1] = Point.Zero;
+                        lastAreas[args.Player.Index] = tempPoints[args.Player.Index];
+                        clearTempPoints((byte)args.Player.Index);
+                        
                         args.Player.SendMessage("Tiles changed!");
                     }
                     else
@@ -1895,7 +2282,7 @@ namespace PluginTemplate
 
             if (args.Parameters.Count > 2)
             {
-                if (args.Player.TempPoints[0] != Point.Zero)
+                if (tempPoints[args.Player.Index].Count() > 0)
                 {
                     int radius;
                     try { radius = Convert.ToInt32(args.Parameters[1]); }
@@ -1920,12 +2307,12 @@ namespace PluginTemplate
                     isWall = ((tileType == 255) && (wallType != 255));
                     if ((tileType != 255) || (wallType != 255))
                     {
-                        int x = args.Player.TempPoints[0].X;
-                        int y = args.Player.TempPoints[0].Y;
+                        int x = tempPoints[args.Player.Index][0].X;
+                        int y = tempPoints[args.Player.Index][0].Y;
                         switch (args.Parameters[0].ToLower())
                         {
 
-                            case "left": for (int y2 = -radius; y2 <= radius; y2++)
+                            case "left": for (int y2 = radius; y2 >= -radius; y2--)
                                 {
 
                                     for (int x2 = -radius; x2 <= 0; x2++)
@@ -1948,7 +2335,7 @@ namespace PluginTemplate
                                     }
 
                                 } break;
-                            case "right": for (int y2 = -radius; y2 <= radius; y2++)
+                            case "right": for (int y2 = radius; y2 >= -radius; y2--)
                                 {
 
                                     for (int x2 = 0; x2 <= radius; x2++)
@@ -1971,7 +2358,7 @@ namespace PluginTemplate
                                     }
 
                                 } break;
-                            case "top": for (int y2 = -radius; y2 <= 0; y2++)
+                            case "top": for (int y2 = 0; y2 >= -radius; y2--)
                                 {
 
                                     for (int x2 = -radius; x2 <= radius; x2++)
@@ -1994,7 +2381,7 @@ namespace PluginTemplate
                                     }
 
                                 } break;
-                            case "bottom": for (int y2 = 0; y2 <= radius; y2++)
+                            case "bottom": for (int y2 = radius; y2 >= 0; y2--)
                                 {
 
                                     for (int x2 = -radius; x2 <= radius; x2++)
@@ -2031,10 +2418,9 @@ namespace PluginTemplate
                             }
 
                         }
-                        lastArea1[args.Player.Index] = args.Player.TempPoints[0];
-                        lastArea2[args.Player.Index] = args.Player.TempPoints[1];
-                        args.Player.TempPoints[0] = Point.Zero;
-                        args.Player.TempPoints[1] = Point.Zero;
+                        lastAreas[args.Player.Index] = tempPoints[args.Player.Index];
+                        clearTempPoints((byte)args.Player.Index);
+                        
                         args.Player.SendMessage("Tiles changed!");
                     }
                     else
@@ -2063,7 +2449,7 @@ namespace PluginTemplate
 
             if (args.Parameters.Count > 2)
             {
-                if (args.Player.TempPoints[0] != Point.Zero)
+                if (tempPoints[args.Player.Index].Count() > 0)
                 {
                     int radius;
                     try { radius = Convert.ToInt32(args.Parameters[1]); }
@@ -2088,12 +2474,12 @@ namespace PluginTemplate
                     isWall = ((tileType == 255) && (wallType != 255));
                     if ((tileType != 255) || (wallType != 255))
                     {
-                        int x = args.Player.TempPoints[0].X;
-                        int y = args.Player.TempPoints[0].Y;
+                        int x = tempPoints[args.Player.Index][0].X;
+                        int y = tempPoints[args.Player.Index][0].Y;
                         switch (args.Parameters[0].ToLower())
                         {
 
-                            case "left": for (int y2 = -radius - (int)(brushStroke[args.Player.Index] / 2); y2 <= radius + (int)(brushStroke[args.Player.Index] / 2); y2++)
+                            case "left": for (int y2 = radius + (int)(brushStroke[args.Player.Index] / 2); y2 >= -radius - (int)(brushStroke[args.Player.Index] / 2); y2--)
                                 {
 
                                     for (int x2 = -radius - (int)(brushStroke[args.Player.Index] / 2); x2 <= 0; x2++)
@@ -2116,7 +2502,7 @@ namespace PluginTemplate
                                     }
 
                                 } break;
-                            case "right": for (int y2 = -radius - (int)(brushStroke[args.Player.Index] / 2); y2 <= radius + (int)(brushStroke[args.Player.Index] / 2); y2++)
+                            case "right": for (int y2 = radius + (int)(brushStroke[args.Player.Index] / 2); y2 >= -radius - (int)(brushStroke[args.Player.Index] / 2); y2--)
                                 {
 
                                     for (int x2 = 0; x2 <= radius + (int)(brushStroke[args.Player.Index] / 2); x2++)
@@ -2139,7 +2525,7 @@ namespace PluginTemplate
                                     }
 
                                 } break;
-                            case "top": for (int y2 = -radius - (int)(brushStroke[args.Player.Index] / 2); y2 <= 0; y2++)
+                            case "top": for (int y2 = 0; y2 >= -radius - (int)(brushStroke[args.Player.Index] / 2); y2--)
                                 {
 
                                     for (int x2 = -radius - (int)(brushStroke[args.Player.Index] / 2); x2 <= radius + (int)(brushStroke[args.Player.Index] / 2); x2++)
@@ -2162,7 +2548,7 @@ namespace PluginTemplate
                                     }
 
                                 } break;
-                            case "bottom": for (int y2 = 0; y2 <= radius + (int)(brushStroke[args.Player.Index] / 2); y2++)
+                            case "bottom": for (int y2 = radius + (int)(brushStroke[args.Player.Index] / 2); y2 >= 0; y2--)
                                 {
 
                                     for (int x2 = -radius - (int)(brushStroke[args.Player.Index] / 2); x2 <= radius + (int)(brushStroke[args.Player.Index] / 2); x2++)
@@ -2199,10 +2585,9 @@ namespace PluginTemplate
                             }
 
                         }
-                        lastArea1[args.Player.Index] = args.Player.TempPoints[0];
-                        lastArea2[args.Player.Index] = args.Player.TempPoints[1];
-                        args.Player.TempPoints[0] = Point.Zero;
-                        args.Player.TempPoints[1] = Point.Zero;
+                        lastAreas[args.Player.Index] = tempPoints[args.Player.Index];
+                        clearTempPoints((byte)args.Player.Index);
+                        
                         args.Player.SendMessage("Tiles changed!");
                     }
                     else
@@ -2229,7 +2614,7 @@ namespace PluginTemplate
         public static void changeTile(int x, int y, byte type, byte wall)
         {
 
-            if (type < 253)
+            if (type < 250)
             {
 
                 Main.tile[x, y].type = type;
@@ -2239,6 +2624,29 @@ namespace PluginTemplate
                 Main.tile[x, y].frameNumber = 0;
                 Main.tile[x, y].frameX = -1;
                 Main.tile[x, y].frameY = -1;
+
+            }
+            else if (type == 250)
+            {
+
+                Main.tile[x, y].active = false;
+                Main.tile[x, y].wall = 0;
+                Main.tile[x, y].skipLiquid = true;
+                Main.tile[x, y].liquid = 0;
+
+            }
+            else if (type == 251)
+            {
+
+                Main.tile[x, y].wall = 0;
+
+            }
+            else if (type == 252)
+            {
+
+                Main.tile[x, y].active = false;
+                Main.tile[x, y].skipLiquid = true;
+                Main.tile[x, y].liquid = 0;
 
             }
             else if (type == 253)
@@ -2267,8 +2675,8 @@ namespace PluginTemplate
                 Main.tile[x, y].wall = wall;
 
             }
-            if ((Main.tile[x, y].type == 53) || (Main.tile[x, y].type == 253) || (Main.tile[x, y].type == 254))
-            WorldGen.SquareTileFrame(x, y, false);
+            if ((Main.tile[x, y].type == 53) || (Main.tile[x, y].type == 253) || (Main.tile[x, y].type == 254) || (Main.tile[x,y].type == 112))
+                WorldGen.SquareTileFrame(x, y, false);
 
         }
 
@@ -2389,11 +2797,277 @@ namespace PluginTemplate
 
             x = Netplay.GetSectionX(x);
             y = Netplay.GetSectionY(y);
-            for (int i = 0; i < Netplay.serverSock.Length; i++)
+            foreach (Terraria.ServerSock theSock in Netplay.serverSock)
             {
-            Netplay.serverSock[0].tileSection[x, y] = false;
+                theSock.tileSection[x, y] = false;
             }
 
+        }
+
+        public static void drawLine(int trueX, int trueY, int trueX2, int trueY2, byte tiletype, byte walltype, double lineBrushStroke)
+        {
+            /*int height = y2 - y1;
+            int width = x2 - x1;
+            double angle = Math.Atan2(height, width) + Math.PI / 2;
+            for (double step = -lineBrushStroke / 2; step <= lineBrushStroke / 2; step += .1)
+            {
+
+                int x3 = (int)(x1 + Math.Cos(angle) * step);
+                int y3 = (int)(y1 + Math.Sin(angle) * step);
+                int x4 = (int)(x2 + Math.Cos(angle) * step);
+                int y4 = (int)(y2 + Math.Sin(angle) * step);
+                drawSimpleLine(x3, y3, x4, y4, tiletype, walltype);
+
+            }*/
+            int x = Math.Min(trueX, trueX2);
+            int y = Math.Min(trueY, trueY2);
+            int width = Math.Abs(trueX - trueX2);
+            int height = Math.Abs(trueY - trueY2);
+            if (x == trueX)
+            {
+
+                if (y == trueY)
+                {
+
+                    for (int y2 = height; y2 >= 0; y2--)
+                    {
+
+                        for (int x2 = 0; x2 <= width; x2++)
+                        {
+
+                            if (Math.Abs(-(height / (double)width) * (x2) + y2) / Math.Sqrt(Math.Pow(height / (double)width, 2) + 1) <= lineBrushStroke / 2)
+                            {
+
+                                    changeTile(x + x2, y + y2, tiletype, walltype);
+
+                            }
+
+                        }
+
+                    }
+
+                }
+                else
+                {
+
+                    for (int y2 = height; y2 >= 0; y2--)
+                    {
+
+                        for (int x2 = 0; x2 <= width; x2++)
+                        {
+
+                            if (Math.Abs(-(-height / (double)width) * (x2) + y2 - height) / Math.Sqrt(Math.Pow(-height / (double)width, 2) + 1) <= lineBrushStroke / 2)
+                            {
+
+                                    changeTile(x + x2, y + y2, tiletype, walltype);
+
+                            }
+
+                        }
+
+                    }
+
+                }
+
+            }
+            else
+            {
+
+                if (y == trueY)
+                {
+
+                    for (int y2 = height; y2 >= 0; y2--)
+                    {
+
+                        for (int x2 = 0; x2 <= width; x2++)
+                        {
+
+                            if (Math.Abs(-(height / -(double)width) * (x2 - width) + y2) / Math.Sqrt(Math.Pow(height / -(double)width, 2) + 1) <= lineBrushStroke / 2)
+                            {
+
+                                    changeTile(x + x2, y + y2, tiletype, walltype);
+
+                            }
+
+                        }
+
+                    }
+
+                }
+                else
+                {
+
+                    for (int y2 = height; y2 >= 0; y2--)
+                    {
+
+                        for (int x2 = 0; x2 <= width; x2++)
+                        {
+
+                            if (Math.Abs(-(-height / -(double)width) * (x2 - width) + y2 - height) / Math.Sqrt(Math.Pow(-height / -(double)width, 2) + 1) <= lineBrushStroke / 2)
+                            {
+
+                                    changeTile(x + x2, y + y2, tiletype, walltype);
+                                
+                            }
+
+                        }
+
+                    }
+
+                }
+
+            }
+            for (int y2 = height; y2 >= 0; y2--)
+            {
+
+                for (int x2 = 0; x2 <= width; x2++)
+                {
+
+                    updateTile(x + x2, y + y2);
+
+                }
+
+            }
+
+        }
+        public static void drawSimpleLine(int x1, int y1, int x2, int y2, byte tiletype, byte walltype)
+        {
+            int height = y2 - y1;
+            int width = x2 - x1;
+            double slope = ((double)height) / ((double)width);
+            int length1D = Math.Max(Math.Abs(height), Math.Abs(width));
+            for (double step = 0; step <= length1D; step += .5)
+            {
+
+                int x3 = x1 + (int)(((double)width / length1D) * step);
+                int y3 = y1 + (int)(((double)height / length1D) * step);
+                changeTile(x3, y3, tiletype, walltype);
+
+            }
+            for (double step = 0; step <= length1D; step += .5)
+            {
+
+                int x3 = (int)(((double)width / length1D) * step);
+                int y3 = (int)(((double)height / length1D) * step);
+                updateTile(x1 + x3, y1 + y3);
+
+            }
+
+        }
+        public static List<Point> getTempOutline(List<Point> theTempPoint)
+        {
+
+            Point[] thePoint = new Point[theTempPoint.Count()];
+            theTempPoint.CopyTo(thePoint);
+            List<Point> tempPoint = new List<Point>();
+            tempPoint.AddRange(thePoint);
+            if (tempPoint.Count() == 2) {
+
+                int theX1 = tempPoint[0].X;
+                int theX2 = tempPoint[1].X;
+                int theY1 = tempPoint[0].Y;
+                int theY2 = tempPoint[1].Y;
+                for (int x = 0; x <= Math.Abs(theX1 - theX2); x++)
+                {
+
+                    tempPoint.Add(new Point(x + Math.Min(theX1, theX2), theY1));
+                    tempPoint.Add(new Point(x + Math.Min(theX1, theX2), theY2));
+
+                }
+                for (int y = 0; y <= Math.Abs(theY1 - theY2); y++)
+                {
+
+                    tempPoint.Add(new Point(theX1, y + Math.Min(theY1, theY2)));
+                    tempPoint.Add(new Point(theX2, y + Math.Min(theY1, theY2)));
+
+                }
+
+            } else if (tempPoint.Count() > 2) {
+
+                int theLength = tempPoint.Count();
+                for (int i = 0; i < theLength - 1; i++)
+                {
+
+                    int theX1 = tempPoint[i].X;
+                    int theX2 = tempPoint[i + 1].X;
+                    int theY1 = tempPoint[i].Y;
+                    int theY2 = tempPoint[i + 1].Y;
+                    int height = theY2 - theY1;
+                    int width = theX2 - theX1;
+                    int length1D = Math.Max(Math.Abs(height), Math.Abs(width));
+                    for (double step = 0; step <= length1D; step += .5)
+                    {
+
+                        if (length1D != 0)
+                        {
+
+                            int x3 = theX1 + (int)(((double)width / length1D) * step);
+                            int y3 = theY1 + (int)(((double)height / length1D) * step);
+                            tempPoint.Add(new Point(x3, y3));
+
+                        }
+                        else
+                        {
+
+                            int x3 = theX1;
+                            int y3 = theY1;
+                            tempPoint.Add(new Point(x3, y3));
+
+                        }
+
+                    }
+
+                }
+
+            }
+            return (tempPoint);
+
+        }
+        public static void clearTempPoints(byte ply)
+        {
+
+            List<Point> evenMoreTempPoints = getTempOutline(tempPoints[ply]);
+            foreach (Point thePoint in evenMoreTempPoints)
+            {
+
+                NetMessage.SendTileSquare(ply, thePoint.X, thePoint.Y, 1);
+
+            }
+            tempPoints[ply] = new List<Point>();
+            awaitingPoint[ply] = 0;
+
+        }
+        public static void refreshTempTiles(int ply, List<Point> tempTempPoint)
+        {
+
+            if (tempPoints[ply].Count() >= 1)
+            {
+
+                List<Point> tempPointList = getTempOutline(tempPoints[ply]);
+                foreach (Point thePoint in tempPointList)
+                {
+                    byte tempType = Main.tile[thePoint.X, thePoint.Y].type;
+                    bool tempActive = Main.tile[thePoint.X, thePoint.Y].active;
+                    Main.tile[thePoint.X, thePoint.Y].type = 70;
+                    Main.tile[thePoint.X, thePoint.Y].active = true;
+                    NetMessage.SendTileSquare(ply, thePoint.X, thePoint.Y, 1);
+                    Main.tile[thePoint.X, thePoint.Y].type = tempType;
+                    Main.tile[thePoint.X, thePoint.Y].active = tempActive;
+                    while (tempTempPoint.Contains(new Point(thePoint.X, thePoint.Y)))
+                    {
+
+                        tempTempPoint.Remove(new Point(thePoint.X, thePoint.Y));
+
+                    }
+                }
+                foreach (Point thePoint in tempTempPoint)
+                {
+
+                    NetMessage.SendTileSquare(ply, thePoint.X, thePoint.Y, 1);
+
+                }
+
+            }
 
         }
     }
